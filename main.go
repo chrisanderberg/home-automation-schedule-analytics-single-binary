@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/config"
+	"home-automation-schedule-analytics-single-bin/internal/ingest"
 	"home-automation-schedule-analytics-single-bin/internal/server"
+	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
 func main() {
@@ -28,7 +31,34 @@ func run() error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	handler := server.New(nil, cfg)
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+		return fmt.Errorf("create db dir: %w", err)
+	}
+
+	db, err := storage.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+
+	if err := storage.InitSchema(context.Background(), db); err != nil {
+		return fmt.Errorf("init schema: %w", err)
+	}
+
+	snapshotDir := filepath.Join(filepath.Dir(cfg.DBPath), "snapshots")
+
+	staticFS := os.DirFS("static")
+
+	handler := server.New(server.Config{
+		DB: db,
+		IngestCfg: ingest.Config{
+			TimeZone:  cfg.TimeZone,
+			Latitude:  cfg.Latitude,
+			Longitude: cfg.Longitude,
+		},
+		SnapshotDir: snapshotDir,
+		StaticFS:    staticFS,
+	})
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

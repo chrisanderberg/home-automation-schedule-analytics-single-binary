@@ -1,0 +1,99 @@
+package domain
+
+import (
+	"testing"
+	"time"
+)
+
+func TestBucketAtUTCGoldens(t *testing.T) {
+	cases := []struct {
+		name string
+		time time.Time
+		want int
+	}{
+		{
+			name: "monday-midnight",
+			time: time.Date(2020, 1, 6, 0, 0, 0, 0, time.UTC),
+			want: 0,
+		},
+		{
+			name: "monday-00-05",
+			time: time.Date(2020, 1, 6, 0, 5, 0, 0, time.UTC),
+			want: 1,
+		},
+		{
+			name: "monday-12-34",
+			time: time.Date(2020, 1, 6, 12, 34, 0, 0, time.UTC),
+			want: 150,
+		},
+		{
+			name: "sunday-23-55",
+			time: time.Date(2020, 1, 12, 23, 55, 0, 0, time.UTC),
+			want: 6*288 + 287,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := BucketAtUTC(tc.time.UnixMilli())
+			if err != nil {
+				t.Fatalf("bucketAtUTC: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("bucket mismatch: got %d want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSplitIntervalUTCBoundary(t *testing.T) {
+	start := time.Date(2020, 1, 6, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2020, 1, 6, 0, 10, 0, 0, time.UTC)
+
+	spans, err := SplitIntervalUTC(start.UnixMilli(), end.UnixMilli())
+	if err != nil {
+		t.Fatalf("split interval: %v", err)
+	}
+	if len(spans) != 2 {
+		t.Fatalf("expected 2 spans, got %d", len(spans))
+	}
+	if spans[0].Bucket != 0 || spans[0].Millis != 5*60*1000 {
+		t.Fatalf("span0 mismatch: %+v", spans[0])
+	}
+	if spans[1].Bucket != 1 || spans[1].Millis != 5*60*1000 {
+		t.Fatalf("span1 mismatch: %+v", spans[1])
+	}
+}
+
+func TestSplitIntervalLocalDSTInvariants(t *testing.T) {
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	start := time.Date(2020, 3, 8, 1, 30, 0, 0, loc)
+	end := time.Date(2020, 3, 8, 3, 30, 0, 0, loc)
+
+	spans, err := SplitIntervalLocal(start.UnixMilli(), end.UnixMilli(), loc)
+	if err != nil {
+		t.Fatalf("split interval local: %v", err)
+	}
+	if len(spans) == 0 {
+		t.Fatalf("expected non-empty spans")
+	}
+
+	var sum int64
+	for _, span := range spans {
+		if span.Bucket < 0 || span.Bucket >= 7*288 {
+			t.Fatalf("bucket out of range: %d", span.Bucket)
+		}
+		if span.Millis <= 0 {
+			t.Fatalf("non-positive span: %d", span.Millis)
+		}
+		sum += span.Millis
+	}
+
+	expected := end.Sub(start).Milliseconds()
+	if sum != expected {
+		t.Fatalf("duration mismatch: got %d want %d", sum, expected)
+	}
+}

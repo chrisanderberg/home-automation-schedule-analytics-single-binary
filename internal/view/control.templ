@@ -1,0 +1,80 @@
+package view
+
+import "fmt"
+
+type QuarterOption struct {
+	QuarterIndex int
+	Label        string
+	Selected     bool
+}
+
+type ControlPageData struct {
+	ControlID   string
+	ControlType string
+	NumStates   int
+	StateLabels []string
+	ModelID     string
+	Quarters    []QuarterOption
+	BucketJSON  string
+}
+
+templ ControlPage(data ControlPageData) {
+	@Layout(data.ControlID) {
+		<div class="control-header">
+			<h1>{ data.ControlID }</h1>
+			<div class="card-meta">
+				<span class="badge">{ data.ControlType }</span>
+				<span>{ fmt.Sprintf("%d states", data.NumStates) }</span>
+				if data.ModelID != "" {
+					<span>{ fmt.Sprintf("model: %s", data.ModelID) }</span>
+				}
+			</div>
+			if len(data.StateLabels) > 0 {
+				<div class="card-labels">
+					for _, label := range data.StateLabels {
+						<span class="label">{ label }</span>
+					}
+				</div>
+			}
+		</div>
+		if len(data.Quarters) > 0 {
+			<div class="quarter-selector">
+				for _, q := range data.Quarters {
+					if q.Selected {
+						<button
+							class="quarter-btn selected"
+							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", data.ControlID, q.QuarterIndex) }
+							hx-target="#heatmap-container"
+							hx-swap="innerHTML"
+						>
+							{ q.Label }
+						</button>
+					} else {
+						<button
+							class="quarter-btn"
+							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", data.ControlID, q.QuarterIndex) }
+							hx-target="#heatmap-container"
+							hx-swap="innerHTML"
+						>
+							{ q.Label }
+						</button>
+					}
+				}
+			</div>
+		}
+		<div id="heatmap-container">
+			if data.BucketJSON != "" {
+				@HeatmapCanvas(data.BucketJSON)
+			} else {
+				<p class="empty">No aggregate data available for this control.</p>
+			}
+		</div>
+	}
+}
+
+templ HeatmapCanvas(bucketJSON string) {
+	<div class="heatmap-wrapper">
+		<canvas class="heatmap" data-buckets={ bucketJSON } width="900" height="200"></canvas>
+	</div>
+	<script src="/static/js/heatmap.js"></script>
+}

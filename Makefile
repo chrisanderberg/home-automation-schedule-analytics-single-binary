@@ -8,7 +8,7 @@ build: generate
 test:
 	go test ./...
 
-run:
+run: generate
 	go run .
 
 generate:

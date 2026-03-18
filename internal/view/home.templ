@@ -1,0 +1,42 @@
+package view
+
+import "fmt"
+
+type ControlWithStats struct {
+	ControlID      string
+	ControlType    string
+	NumStates      int
+	StateLabels    []string
+	AggregateCount int
+}
+
+templ HomePage(controls []ControlWithStats) {
+	@Layout("Home") {
+		<h1>Controls</h1>
+		if len(controls) == 0 {
+			<p class="empty">No controls registered yet. Use the API to add controls.</p>
+		} else {
+			<div class="card-grid">
+				for _, c := range controls {
+					<a href={ templ.SafeURL(fmt.Sprintf("/controls/%s", c.ControlID)) } class="card">
+						<h2 class="card-title">{ c.ControlID }</h2>
+						<div class="card-meta">
+							<span class="badge">{ c.ControlType }</span>
+							<span>{ fmt.Sprintf("%d states", c.NumStates) }</span>
+						</div>
+						if len(c.StateLabels) > 0 {
+							<div class="card-labels">
+								for _, label := range c.StateLabels {
+									<span class="label">{ label }</span>
+								}
+							</div>
+						}
+						<div class="card-stat">
+							{ fmt.Sprintf("%d aggregates", c.AggregateCount) }
+						</div>
+					</a>
+				}
+			</div>
+		}
+	}
+}
