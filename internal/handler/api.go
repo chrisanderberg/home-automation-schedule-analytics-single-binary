@@ -42,6 +42,10 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid controlType")
 			return
 		}
+		if req.ControlType == string(storage.ControlTypeSlider) && req.NumStates != 6 {
+			writeError(w, http.StatusBadRequest, "slider controls must use exactly 6 states")
+			return
+		}
 		if len(req.StateLabels) > 0 && len(req.StateLabels) != req.NumStates {
 			writeError(w, http.StatusBadRequest, "stateLabels must have exactly numStates elements when provided")
 			return

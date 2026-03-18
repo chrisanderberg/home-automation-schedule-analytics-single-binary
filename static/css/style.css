@@ -88,7 +88,6 @@ h1 {
   text-decoration: none;
   color: var(--text);
   transition: background 0.15s, border-color 0.15s;
-  view-transition-name: card;
 }
 .card:hover {
   background: var(--surface-hover);

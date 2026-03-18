@@ -26,7 +26,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	cfg := Config{TimeZone: "UTC", Latitude: 0, Longitude: 0}
+	cfg := Config{TimeZone: "UTC", Latitude: 37.7749, Longitude: -122.4194}
 
 	if err := storage.UpsertControl(ctx, db, storage.Control{
 		ControlID: "light", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
@@ -56,20 +56,44 @@ func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 
 	expectedMs := end.Sub(start).Milliseconds()
 
-	utcIdx, _ := domain.HoldIndex(1, domain.ClockUTC, 0, 3)
-	v, _ := b.GetU64(utcIdx)
-	if v != uint64(expectedMs) {
-		t.Fatalf("UTC holding: got %d want %d", v, expectedMs)
+	checkClockSpans := func(clock int, spans []domain.BucketSpan, name string) {
+		var total uint64
+		for _, span := range spans {
+			idx, err := domain.HoldIndex(1, clock, span.Bucket, 3)
+			if err != nil {
+				t.Fatalf("%s hold index: %v", name, err)
+			}
+			v, err := b.GetU64(idx)
+			if err != nil {
+				t.Fatalf("%s get value: %v", name, err)
+			}
+			if v != uint64(span.Millis) {
+				t.Fatalf("%s holding bucket %d: got %d want %d", name, span.Bucket, v, span.Millis)
+			}
+			total += v
+		}
+		if total != uint64(expectedMs) {
+			t.Fatalf("%s total holding: got %d want %d", name, total, expectedMs)
+		}
 	}
 
-	localIdx, _ := domain.HoldIndex(1, domain.ClockLocal, 0, 3)
-	v, _ = b.GetU64(localIdx)
-	if v != uint64(expectedMs) {
-		t.Fatalf("Local holding: got %d want %d", v, expectedMs)
-	}
+	utcSpans, _ := domain.SplitIntervalUTC(input.StartTimeMs, input.EndTimeMs)
+	checkClockSpans(domain.ClockUTC, utcSpans, "UTC")
+
+	localSpans, _ := domain.SplitIntervalLocal(input.StartTimeMs, input.EndTimeMs, time.UTC)
+	checkClockSpans(domain.ClockLocal, localSpans, "Local")
+
+	meanSolarSpans, _ := domain.SplitIntervalMeanSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	checkClockSpans(domain.ClockMeanSolar, meanSolarSpans, "MeanSolar")
+
+	apparentSolarSpans, _ := domain.SplitIntervalApparentSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	checkClockSpans(domain.ClockApparentSolar, apparentSolarSpans, "ApparentSolar")
+
+	unequalHoursSpans, _ := domain.SplitIntervalUnequalHours(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	checkClockSpans(domain.ClockUnequalHours, unequalHoursSpans, "UnequalHours")
 
 	otherIdx, _ := domain.HoldIndex(0, domain.ClockUTC, 0, 3)
-	v, _ = b.GetU64(otherIdx)
+	v, _ := b.GetU64(otherIdx)
 	if v != 0 {
 		t.Fatalf("other state should be 0, got %d", v)
 	}
@@ -106,20 +130,37 @@ func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 	b, _ := domain.NewBlob(3)
 	copy(b.Data(), data)
 
-	utcIdx, _ := domain.TransIndex(0, 2, domain.ClockUTC, 0, 3)
-	v, _ := b.GetU64(utcIdx)
-	if v != 1 {
-		t.Fatalf("UTC transition count: got %d want 1", v)
+	checkTransitionClock := func(clock int, bucket int, name string) {
+		idx, err := domain.TransIndex(0, 2, clock, bucket, 3)
+		if err != nil {
+			t.Fatalf("%s transition index: %v", name, err)
+		}
+		v, err := b.GetU64(idx)
+		if err != nil {
+			t.Fatalf("%s get value: %v", name, err)
+		}
+		if v != 1 {
+			t.Fatalf("%s transition count: got %d want 1", name, v)
+		}
 	}
 
-	localIdx, _ := domain.TransIndex(0, 2, domain.ClockLocal, 0, 3)
-	v, _ = b.GetU64(localIdx)
-	if v != 1 {
-		t.Fatalf("Local transition count: got %d want 1", v)
-	}
+	utcBucket, _ := domain.BucketAtUTC(input.TimestampMs)
+	checkTransitionClock(domain.ClockUTC, utcBucket, "UTC")
+
+	localBucket, _ := domain.BucketAtLocal(input.TimestampMs, time.UTC)
+	checkTransitionClock(domain.ClockLocal, localBucket, "Local")
+
+	meanSolarBucket, _ := domain.BucketAtMeanSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	checkTransitionClock(domain.ClockMeanSolar, meanSolarBucket, "MeanSolar")
+
+	apparentSolarBucket, _ := domain.BucketAtApparentSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	checkTransitionClock(domain.ClockApparentSolar, apparentSolarBucket, "ApparentSolar")
+
+	unequalHoursBucket, _ := domain.BucketAtUnequalHours(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	checkTransitionClock(domain.ClockUnequalHours, unequalHoursBucket, "UnequalHours")
 
 	otherIdx, _ := domain.TransIndex(0, 1, domain.ClockUTC, 0, 3)
-	v, _ = b.GetU64(otherIdx)
+	v, _ := b.GetU64(otherIdx)
 	if v != 0 {
 		t.Fatalf("other transition should be 0, got %d", v)
 	}

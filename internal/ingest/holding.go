@@ -50,14 +50,14 @@ func IngestHolding(ctx context.Context, db *sql.DB, cfg Config, input HoldingInp
 
 	for _, span := range quarterSpans {
 		key := storage.AggregateKey{ControlID: input.ControlID, ModelID: input.ModelID, QuarterIndex: span.QuarterIndex}
-		if err := applyHoldingQuarter(ctx, db, key, control.NumStates, input.State, span.StartMs, span.EndMs, loc); err != nil {
+		if err := applyHoldingQuarter(ctx, db, key, control.NumStates, input.State, span.StartMs, span.EndMs, loc, cfg.Latitude, cfg.Longitude); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateKey, numStates int, state int, startMs int64, endMs int64, loc *time.Location) error {
+func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateKey, numStates int, state int, startMs int64, endMs int64, loc *time.Location, latitude float64, longitude float64) error {
 	return storage.UpdateAggregate(ctx, db, key, numStates, func(data []byte) error {
 		b, err := domain.NewBlob(numStates)
 		if err != nil {
@@ -78,6 +78,30 @@ func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateK
 			return err
 		}
 		if err := applyHoldingClockSpans(b, numStates, state, domain.ClockLocal, localSpans); err != nil {
+			return err
+		}
+
+		meanSolarSpans, err := domain.SplitIntervalMeanSolar(startMs, endMs, latitude, longitude)
+		if err != nil {
+			return err
+		}
+		if err := applyHoldingClockSpans(b, numStates, state, domain.ClockMeanSolar, meanSolarSpans); err != nil {
+			return err
+		}
+
+		apparentSolarSpans, err := domain.SplitIntervalApparentSolar(startMs, endMs, latitude, longitude)
+		if err != nil {
+			return err
+		}
+		if err := applyHoldingClockSpans(b, numStates, state, domain.ClockApparentSolar, apparentSolarSpans); err != nil {
+			return err
+		}
+
+		unequalHoursSpans, err := domain.SplitIntervalUnequalHours(startMs, endMs, latitude, longitude)
+		if err != nil {
+			return err
+		}
+		if err := applyHoldingClockSpans(b, numStates, state, domain.ClockUnequalHours, unequalHoursSpans); err != nil {
 			return err
 		}
 

@@ -160,6 +160,22 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 	}
 }
 
+func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey) ([]byte, error) {
+	row := db.QueryRowContext(
+		ctx,
+		`SELECT blob FROM aggregates WHERE control_id = ? AND model_id = ? AND quarter_index = ?`,
+		key.ControlID, key.ModelID, key.QuarterIndex,
+	)
+	var blobBytes []byte
+	if err := row.Scan(&blobBytes); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return blobBytes, nil
+}
+
 func UpdateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int, update func([]byte) error) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {

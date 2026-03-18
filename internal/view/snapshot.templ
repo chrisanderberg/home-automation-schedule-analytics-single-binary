@@ -8,6 +8,13 @@ type SnapshotEntry struct {
 	ModTime string
 }
 
+func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
+	if len(snapshots) > 50 {
+		return snapshots[:50]
+	}
+	return snapshots
+}
+
 templ SnapshotPage(snapshots []SnapshotEntry) {
 	@Layout("Snapshots") {
 		<h1>Snapshots</h1>
@@ -35,17 +42,17 @@ templ SnapshotPage(snapshots []SnapshotEntry) {
 						</tr>
 					</thead>
 					<tbody>
-						for i, s := range snapshots {
+						for _, s := range displaySnapshots(snapshots) {
 							<tr>
 								<td>{ s.Name }</td>
 								<td>{ s.Size }</td>
 								<td>{ s.ModTime }</td>
 							</tr>
-							if i == 49 {
-								<tr>
-									<td colspan="3">{ fmt.Sprintf("... and %d more", len(snapshots)-50) }</td>
-								</tr>
-							}
+						}
+						if len(snapshots) > 50 {
+							<tr>
+								<td colspan="3">{ fmt.Sprintf("... and %d more", len(snapshots)-50) }</td>
+							</tr>
 						}
 					</tbody>
 				</table>

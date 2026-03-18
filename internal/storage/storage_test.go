@@ -97,6 +97,24 @@ func TestAggregateCreateUpdate(t *testing.T) {
 	}
 }
 
+func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := GetAggregate(ctx, db, AggregateKey{ControlID: "missing", ModelID: "m", QuarterIndex: 1})
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+
+	keys, err := ListAggregateKeys(ctx, db, "missing")
+	if err != nil {
+		t.Fatalf("list aggregate keys: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("expected no aggregates, got %+v", keys)
+	}
+}
+
 func TestAggregateConcurrentUpdates(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

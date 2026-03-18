@@ -65,6 +65,30 @@ func IngestTransition(ctx context.Context, db *sql.DB, cfg Config, input Transit
 			return err
 		}
 
+		bucketMeanSolar, err := domain.BucketAtMeanSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+		if err != nil {
+			return err
+		}
+		if err := incrementTransitionCount(b, input.FromState, input.ToState, control.NumStates, domain.ClockMeanSolar, bucketMeanSolar); err != nil {
+			return err
+		}
+
+		bucketApparentSolar, err := domain.BucketAtApparentSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+		if err != nil {
+			return err
+		}
+		if err := incrementTransitionCount(b, input.FromState, input.ToState, control.NumStates, domain.ClockApparentSolar, bucketApparentSolar); err != nil {
+			return err
+		}
+
+		bucketUnequalHours, err := domain.BucketAtUnequalHours(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+		if err != nil {
+			return err
+		}
+		if err := incrementTransitionCount(b, input.FromState, input.ToState, control.NumStates, domain.ClockUnequalHours, bucketUnequalHours); err != nil {
+			return err
+		}
+
 		copy(data, b.Data())
 		return nil
 	})

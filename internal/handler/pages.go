@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain"
@@ -61,7 +62,12 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		keys, _ := storage.ListAggregateKeys(r.Context(), db, controlID)
+		keys, err := storage.ListAggregateKeys(r.Context(), db, controlID)
+		if err != nil {
+			log.Printf("list aggregate keys for %s: %v", controlID, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 
 		data := view.ControlPageData{
 			ControlID:   control.ControlID,
@@ -82,30 +88,34 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 		}
 		data.ModelID = modelID
 
-		var selectedQuarter int
+		selectedQuarter := -1
 		if qStr := r.URL.Query().Get("quarter"); qStr != "" {
 			if q, err := strconv.Atoi(qStr); err == nil {
 				selectedQuarter = q
 			}
 		}
 
-		var quarters []view.QuarterOption
+		quarterIndexes := make([]int, 0, len(quarterSet))
 		latestQuarter := -1
-		for qi, label := range quarterSet {
+		for qi := range quarterSet {
 			if qi > latestQuarter {
 				latestQuarter = qi
 			}
-			quarters = append(quarters, view.QuarterOption{QuarterIndex: qi, Label: label})
+			quarterIndexes = append(quarterIndexes, qi)
 		}
+		slices.Sort(quarterIndexes)
 
-		if selectedQuarter == 0 && latestQuarter >= 0 {
+		if selectedQuarter < 0 && latestQuarter >= 0 {
 			selectedQuarter = latestQuarter
 		}
 
-		for i := range quarters {
-			if quarters[i].QuarterIndex == selectedQuarter {
-				quarters[i].Selected = true
-			}
+		quarters := make([]view.QuarterOption, 0, len(quarterIndexes))
+		for _, qi := range quarterIndexes {
+			quarters = append(quarters, view.QuarterOption{
+				QuarterIndex: qi,
+				Label:        quarterSet[qi],
+				Selected:     qi == selectedQuarter,
+			})
 		}
 		data.Quarters = quarters
 
@@ -187,8 +197,11 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 }
 
 func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string, quarterIndex, numStates int) string {
+	if modelID == "" {
+		return ""
+	}
 	key := storage.AggregateKey{ControlID: controlID, ModelID: modelID, QuarterIndex: quarterIndex}
-	data, err := storage.GetOrCreateAggregate(ctx, db, key, numStates)
+	data, err := storage.GetAggregate(ctx, db, key)
 	if err != nil {
 		return ""
 	}

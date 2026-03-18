@@ -66,16 +66,26 @@
     };
   }
 
-  function init() {
-    var canvases = document.querySelectorAll("canvas.heatmap[data-buckets]");
+  function init(root) {
+    var scope = root || document;
+    var canvases = scope.querySelectorAll("canvas.heatmap[data-buckets]");
     for (var i = 0; i < canvases.length; i++) {
       render(canvases[i]);
     }
   }
 
+  window.initHeatmaps = init;
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", function () { init(document); });
   } else {
-    init();
+    init(document);
+  }
+
+  if (document.body && document.body.addEventListener) {
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      if (!event || !event.target || !event.target.querySelectorAll) return;
+      init(event.target);
+    });
   }
 })();

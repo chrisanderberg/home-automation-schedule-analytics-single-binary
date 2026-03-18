@@ -104,6 +104,15 @@ func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	}
 }
 
+func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{"controlId": "slider", "controlType": "slider", "numStates": 5}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
 func TestHoldingAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{

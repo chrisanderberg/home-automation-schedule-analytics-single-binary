@@ -46,6 +46,9 @@ func run() error {
 	}
 
 	snapshotDir := filepath.Join(filepath.Dir(cfg.DBPath), "snapshots")
+	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
+		return fmt.Errorf("create snapshot dir: %w", err)
+	}
 
 	staticFS := os.DirFS("static")
 
