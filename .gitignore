@@ -1,0 +1,6 @@
+data/*.sqlite
+data/snapshots/*.sqlite
+testdata/*.sqlite
+*_templ.go
+home-automation-schedule-analytics-single-bin
+.env

@@ -1,0 +1,23 @@
+BINARY := home-automation-schedule-analytics
+
+.PHONY: build test run generate clean fmt
+
+build: generate
+	go build -o $(BINARY) .
+
+test:
+	go test ./...
+
+run:
+	go run .
+
+generate:
+	templ generate
+
+clean:
+	rm -f $(BINARY)
+	find . -name '*_templ.go' -delete
+
+fmt:
+	gofmt -w .
+	templ fmt .
