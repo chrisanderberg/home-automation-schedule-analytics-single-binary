@@ -39,13 +39,22 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("HAA_LONGITUDE must be in [-180, 180], got %v", lon)
 	}
 
+	port := envDefault("HAA_PORT", "8080")
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid HAA_PORT=%q: %w", port, err)
+	}
+	if portNum < 1 || portNum > 65535 {
+		return Config{}, fmt.Errorf("HAA_PORT must be in [1, 65535], got %d", portNum)
+	}
+
 	return Config{
 		TimeZone:  tz,
 		Location:  loc,
 		Latitude:  lat,
 		Longitude: lon,
 		DBPath:    envDefault("HAA_DB_PATH", "data/data.sqlite"),
-		Port:      envDefault("HAA_PORT", "8080"),
+		Port:      port,
 	}, nil
 }
 

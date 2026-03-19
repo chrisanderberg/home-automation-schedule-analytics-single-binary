@@ -94,7 +94,7 @@ make build      # templ generate + go build
 
 ## Project structure
 
-```
+```text
 internal/
   config/     # environment variable parsing
   domain/     # blob index math, bucketing (5 clocks), quarter splitting

@@ -18,5 +18,6 @@ func IsValidationError(err error) bool {
 		errors.Is(err, storage.ErrNotFound) ||
 		errors.Is(err, domain.ErrInvalidInterval) ||
 		errors.Is(err, domain.ErrInvalidTimestamp) ||
+		errors.Is(err, domain.ErrUndefinedClock) ||
 		errors.Is(err, domain.ErrInvalidCoordinates)
 }

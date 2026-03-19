@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -27,11 +29,20 @@ func Export(ctx context.Context, db *sql.DB, snapshotDir string) (string, error)
 }
 
 func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
-	dest, err := sql.Open("sqlite", destPath)
+	dest, err := sql.Open("sqlite", destPath+"?_pragma=foreign_keys(1)")
 	if err != nil {
 		return err
 	}
 	defer dest.Close()
+
+	if _, err := dest.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+	defer func() {
+		if _, err := dest.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`); err != nil {
+			log.Printf("restore foreign keys on snapshot db: %v", err)
+		}
+	}()
 
 	readTx, err := src.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -39,7 +50,7 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	}
 	defer readTx.Rollback()
 
-	rows, err := readTx.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid`)
+	rows, err := readTx.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid`)
 	if err != nil {
 		return err
 	}
@@ -76,7 +87,7 @@ type queryContexter interface {
 }
 
 func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
-	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +99,19 @@ func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
+		if isInternalSQLiteName(name) {
+			continue
+		}
 		names = append(names, name)
 	}
 	return names, rows.Err()
 }
 
 func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table string) error {
+	if isInternalSQLiteName(table) {
+		return nil
+	}
+
 	rows, err := src.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %q", table))
 	if err != nil {
 		return err
@@ -117,6 +135,30 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 	}
 	insertSQL := fmt.Sprintf("INSERT INTO %q VALUES (%s)", table, placeholders)
 
+	startBatch := func() (*sql.Tx, *sql.Stmt, error) {
+		tx, err := dest.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		stmt, err := tx.PrepareContext(ctx, insertSQL)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, nil, err
+		}
+		return tx, stmt, nil
+	}
+
+	tx, stmt, err := startBatch()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	rowCount := 0
 	for rows.Next() {
 		values := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
@@ -126,11 +168,38 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 		if err := rows.Scan(ptrs...); err != nil {
 			return err
 		}
-		if _, err := dest.ExecContext(ctx, insertSQL, values...); err != nil {
+		if _, err := stmt.ExecContext(ctx, values...); err != nil {
 			return err
 		}
+		rowCount++
+		if rowCount%500 == 0 {
+			if err := stmt.Close(); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			if err := tx.Commit(); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			tx, stmt, err = startBatch()
+			if err != nil {
+				return err
+			}
+		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := stmt.Close(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	tx = nil
+	return nil
 }
 
 type SnapshotInfo struct {
@@ -156,6 +225,7 @@ func ListSnapshots(snapshotDir string) ([]SnapshotInfo, error) {
 		}
 		info, err := e.Info()
 		if err != nil {
+			log.Printf("read snapshot entry info for %s: %v", e.Name(), err)
 			continue
 		}
 		infos = append(infos, SnapshotInfo{
@@ -170,4 +240,8 @@ func ListSnapshots(snapshotDir string) ([]SnapshotInfo, error) {
 		return infos[i].ModTime.After(infos[j].ModTime)
 	})
 	return infos, nil
+}
+
+func isInternalSQLiteName(name string) bool {
+	return name == "sqlite_sequence" || strings.HasPrefix(name, "sqlite_")
 }

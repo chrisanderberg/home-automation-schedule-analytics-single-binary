@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"strings"
+	"errors"
 	"sync"
 	"testing"
 
@@ -57,6 +57,10 @@ func TestAggregateCreateUpdate(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeDiscrete, NumStates: 3}); err != nil {
+		t.Fatalf("upsert control: %v", err)
+	}
+
 	key := AggregateKey{ControlID: "light", ModelID: "default", QuarterIndex: 200}
 	numStates := 3
 
@@ -101,7 +105,7 @@ func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
-	_, err := GetAggregate(ctx, db, AggregateKey{ControlID: "missing", ModelID: "m", QuarterIndex: 1})
+	_, err := GetAggregate(ctx, db, AggregateKey{ControlID: "missing", ModelID: "m", QuarterIndex: 1}, 2)
 	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -118,6 +122,10 @@ func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
 func TestAggregateConcurrentUpdates(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+		t.Fatalf("upsert control: %v", err)
+	}
 
 	key := AggregateKey{ControlID: "c", ModelID: "m", QuarterIndex: 1}
 	numStates := 2
@@ -162,6 +170,10 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
+	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+		t.Fatalf("upsert control: %v", err)
+	}
+
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO aggregates (control_id, model_id, quarter_index, blob) VALUES (?, ?, ?, ?)`,
 		"bad", "m", 0, []byte{0x01, 0x02},
@@ -173,7 +185,7 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	err = UpdateAggregate(ctx, db, AggregateKey{ControlID: "bad", ModelID: "m", QuarterIndex: 0}, 2, func(blob []byte) error {
 		return nil
 	})
-	if err == nil || !strings.Contains(err.Error(), "aggregate blob size mismatch") {
+	if !errors.Is(err, ErrAggregateBlobSizeMismatch) {
 		t.Fatalf("expected blob size mismatch error, got %v", err)
 	}
 }
@@ -181,6 +193,10 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+		t.Fatalf("upsert control: %v", err)
+	}
 
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO aggregates (control_id, model_id, quarter_index, blob) VALUES (?, ?, ?, ?)`,
@@ -191,7 +207,32 @@ func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	}
 
 	_, err = GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "bad", ModelID: "m", QuarterIndex: 0}, 2)
-	if err == nil || !strings.Contains(err.Error(), "aggregate blob size mismatch") {
+	if !errors.Is(err, ErrAggregateBlobSizeMismatch) {
+		t.Fatalf("expected blob size mismatch error, got %v", err)
+	}
+}
+
+func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO controls (control_id, control_type, num_states, state_labels) VALUES (?, ?, ?, ?)`,
+		"bad", string(ControlTypeDiscrete), 2, "",
+	)
+	if err != nil {
+		t.Fatalf("seed control: %v", err)
+	}
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO aggregates (control_id, model_id, quarter_index, blob) VALUES (?, ?, ?, ?)`,
+		"bad", "m", 0, []byte{0x01, 0x02},
+	)
+	if err != nil {
+		t.Fatalf("raw insert: %v", err)
+	}
+
+	_, err = GetAggregate(ctx, db, AggregateKey{ControlID: "bad", ModelID: "m", QuarterIndex: 0}, 2)
+	if !errors.Is(err, ErrAggregateBlobSizeMismatch) {
 		t.Fatalf("expected blob size mismatch error, got %v", err)
 	}
 }
@@ -222,6 +263,10 @@ func TestListControls(t *testing.T) {
 func TestListAggregateKeys(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+		t.Fatalf("upsert control: %v", err)
+	}
 
 	key1 := AggregateKey{ControlID: "c", ModelID: "m1", QuarterIndex: 200}
 	key2 := AggregateKey{ControlID: "c", ModelID: "m2", QuarterIndex: 201}

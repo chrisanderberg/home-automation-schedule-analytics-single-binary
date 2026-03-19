@@ -22,8 +22,6 @@ templ SnapshotPage(snapshots []SnapshotEntry) {
 			<button
 				class="btn"
 				hx-post="/api/v1/snapshots"
-				hx-target="#snapshot-list"
-				hx-swap="outerHTML"
 				hx-on::after-request="setTimeout(function(){ location.reload(); }, 500)"
 			>
 				Export Snapshot

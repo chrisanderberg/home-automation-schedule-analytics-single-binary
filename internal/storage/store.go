@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 
@@ -13,9 +14,10 @@ import (
 )
 
 var ErrNotFound = errors.New("not found")
+var ErrAggregateBlobSizeMismatch = errors.New("aggregate blob size mismatch")
 
 func Open(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +126,8 @@ func validateAggregateBlobSize(key AggregateKey, numStates int, blobBytes []byte
 	expectedLen := numStates * numStates * domain.GroupSize * 8
 	if len(blobBytes) != expectedLen {
 		return fmt.Errorf(
-			"aggregate blob size mismatch for control_id=%q model_id=%q quarter_index=%d: got %d bytes, expected %d",
+			"%w for control_id=%q model_id=%q quarter_index=%d: got %d bytes, expected %d",
+			ErrAggregateBlobSizeMismatch,
 			key.ControlID, key.ModelID, key.QuarterIndex, len(blobBytes), expectedLen,
 		)
 	}
@@ -177,7 +180,7 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 	}
 }
 
-func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey) ([]byte, error) {
+func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int) ([]byte, error) {
 	row := db.QueryRowContext(
 		ctx,
 		`SELECT blob FROM aggregates WHERE control_id = ? AND model_id = ? AND quarter_index = ?`,
@@ -190,7 +193,18 @@ func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey) ([]byte, er
 		}
 		return nil, err
 	}
+	if err := validateAggregateBlobSize(key, numStates, blobBytes); err != nil {
+		return nil, err
+	}
 	return blobBytes, nil
+}
+
+func sqliteDSN(dbPath string) string {
+	const pragma = "_pragma=foreign_keys(1)"
+	if strings.Contains(dbPath, "?") {
+		return dbPath + "&" + pragma
+	}
+	return dbPath + "?" + pragma
 }
 
 func UpdateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int, update func([]byte) error) error {

@@ -83,6 +83,7 @@ func nextBoundaryUTC(timestampMs int64) int64 {
 	if minute >= 60 {
 		minute = 0
 		hour++
+		// nextBoundaryUTC relies on time.Date to normalize any hour >= 24 into the next day.
 	}
 	boundary := time.Date(year, month, day, hour, minute, 0, 0, time.UTC)
 	return boundary.UnixMilli()

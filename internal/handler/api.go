@@ -1,14 +1,18 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/ingest"
 	"home-automation-schedule-analytics-single-bin/internal/snapshot"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
+
+const snapshotExportTimeout = 30 * time.Second
 
 func HandleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +112,10 @@ func HandleTransitions(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
 
 func HandleSnapshots(db *sql.DB, snapshotDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		path, err := snapshot.Export(r.Context(), db, snapshotDir)
+		ctx, cancel := context.WithTimeout(r.Context(), snapshotExportTimeout)
+		defer cancel()
+
+		path, err := snapshot.Export(ctx, db, snapshotDir)
 		if err != nil {
 			log.Printf("handleSnapshots export failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")

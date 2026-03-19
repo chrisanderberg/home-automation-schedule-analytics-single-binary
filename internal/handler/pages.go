@@ -186,7 +186,12 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		keys, _ := storage.ListAggregateKeys(r.Context(), db, controlID)
+		keys, err := storage.ListAggregateKeys(r.Context(), db, controlID)
+		if err != nil {
+			log.Printf("list aggregate keys for %s: %v", controlID, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		var modelID string
 		for _, k := range keys {
 			modelID = k.ModelID
@@ -212,7 +217,7 @@ func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string,
 		return ""
 	}
 	key := storage.AggregateKey{ControlID: controlID, ModelID: modelID, QuarterIndex: quarterIndex}
-	data, err := storage.GetAggregate(ctx, db, key)
+	data, err := storage.GetAggregate(ctx, db, key, numStates)
 	if err != nil {
 		return ""
 	}

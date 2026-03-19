@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS aggregates (
   model_id TEXT NOT NULL,
   quarter_index INTEGER NOT NULL,
   blob BLOB NOT NULL,
-  PRIMARY KEY (control_id, model_id, quarter_index)
+  PRIMARY KEY (control_id, model_id, quarter_index),
+  FOREIGN KEY (control_id) REFERENCES controls(control_id) ON DELETE CASCADE
 );
 `

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -100,15 +101,25 @@ func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateK
 
 		unequalHoursSpans, err := domain.SplitIntervalUnequalHours(startMs, endMs, latitude, longitude)
 		if err != nil {
-			return err
-		}
-		if err := applyHoldingClockSpans(b, numStates, state, domain.ClockUnequalHours, unequalHoursSpans); err != nil {
+			if errors.Is(err, domain.ErrUndefinedClock) {
+				logHoldingUndefinedClock(startMs, endMs, latitude, longitude)
+			} else {
+				return err
+			}
+		} else if err := applyHoldingClockSpans(b, numStates, state, domain.ClockUnequalHours, unequalHoursSpans); err != nil {
 			return err
 		}
 
 		copy(data, b.Data())
 		return nil
 	})
+}
+
+func logHoldingUndefinedClock(startMs, endMs int64, latitude, longitude float64) {
+	log.Printf(
+		"holding ingest skipped unequal-hours spans for undefined clock: startMs=%d endMs=%d latitude=%f longitude=%f clock=%d",
+		startMs, endMs, latitude, longitude, domain.ClockUnequalHours,
+	)
 }
 
 func applyHoldingClockSpans(b *domain.Blob, numStates int, state int, clock int, spans []domain.BucketSpan) error {

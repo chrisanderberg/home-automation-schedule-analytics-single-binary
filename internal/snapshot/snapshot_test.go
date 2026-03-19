@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
@@ -56,12 +57,22 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 func TestListSnapshotsOrder(t *testing.T) {
 	dir := t.TempDir()
 
-	for _, name := range []string{"snapshot-20260101-000000.sqlite", "snapshot-20260102-000000.sqlite"} {
-		f, err := os.Create(filepath.Join(dir, name))
+	oldPath := filepath.Join(dir, "snapshot-20260101-000000.sqlite")
+	newPath := filepath.Join(dir, "snapshot-20260102-000000.sqlite")
+	for _, path := range []string{oldPath, newPath} {
+		f, err := os.Create(path)
 		if err != nil {
 			t.Fatalf("create: %v", err)
 		}
 		f.Close()
+	}
+
+	base := time.Now().UTC().Add(-time.Hour)
+	if err := os.Chtimes(oldPath, base, base); err != nil {
+		t.Fatalf("chtimes old: %v", err)
+	}
+	if err := os.Chtimes(newPath, base.Add(time.Minute), base.Add(time.Minute)); err != nil {
+		t.Fatalf("chtimes new: %v", err)
 	}
 
 	infos, err := ListSnapshots(dir)

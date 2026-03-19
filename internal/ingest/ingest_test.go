@@ -222,6 +222,10 @@ func TestIngestValidationErrors(t *testing.T) {
 	if !IsValidationError(err) {
 		t.Fatalf("expected validation error for self-transition, got %v", err)
 	}
+
+	if !IsValidationError(domain.ErrUndefinedClock) {
+		t.Fatalf("expected ErrUndefinedClock to be treated as a validation error")
+	}
 }
 
 func TestApplyHoldingClockSpansSaturatesAtMaxUint64(t *testing.T) {

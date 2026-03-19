@@ -5,7 +5,7 @@ BINARY := home-automation-schedule-analytics
 build: generate
 	go build -o $(BINARY) .
 
-test:
+test: generate
 	go test ./...
 
 run: generate

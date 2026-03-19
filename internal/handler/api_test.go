@@ -93,6 +93,22 @@ func TestControlsRejectEmptyBody(t *testing.T) {
 	}
 }
 
+func TestControlsRejectTrailingJSON(t *testing.T) {
+	db := openTestDB(t)
+	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"discrete","numStates":3}{"extra":true}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
+	db := openTestDB(t)
+	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"discrete\",\"numStates\":3\n}\n")
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestControlsRejectsInvalidNumStates(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 1}
