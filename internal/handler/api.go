@@ -15,6 +15,7 @@ import (
 
 const snapshotExportTimeout = 30 * time.Second
 
+// HandleHealth returns a minimal liveness endpoint.
 func HandleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -28,6 +29,7 @@ type controlRequest struct {
 	StateLabels []string `json:"stateLabels"`
 }
 
+// HandleControls validates and upserts control metadata from the API.
 func HandleControls(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req controlRequest
@@ -71,14 +73,17 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// HandleHolding accepts holding-interval ingest requests.
 func HandleHolding(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
 	return makeIngestHandler(db, cfg, "handleHolding", ingest.IngestHolding)
 }
 
+// HandleTransitions accepts transition ingest requests.
 func HandleTransitions(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
 	return makeIngestHandler(db, cfg, "handleTransitions", ingest.IngestTransition)
 }
 
+// makeIngestHandler shares JSON decoding and error mapping across ingest endpoints.
 func makeIngestHandler[T any](
 	db *sql.DB,
 	cfg ingest.Config,
@@ -104,6 +109,7 @@ func makeIngestHandler[T any](
 	}
 }
 
+// HandleSnapshots exports a snapshot file and returns its filename.
 func HandleSnapshots(db *sql.DB, snapshotDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), snapshotExportTimeout)

@@ -17,6 +17,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/view"
 )
 
+// HandleHomePage renders the control index page with lightweight aggregate counts.
 func HandleHomePage(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controls, err := storage.ListControls(r.Context(), db)
@@ -49,6 +50,7 @@ func HandleHomePage(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// HandleControlPage renders one control detail page and its quarter selector.
 func HandleControlPage(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.PathValue("controlID")
@@ -86,6 +88,8 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 		var modelID string
 		for _, k := range keys {
 			if modelID == "" {
+				// The current UI visualizes one model at a time and defaults to the
+				// first available aggregate rather than introducing model selection.
 				modelID = k.ModelID
 			}
 			if _, ok := quarterSet[k.QuarterIndex]; !ok {
@@ -136,6 +140,7 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// HandleSnapshotPage renders the snapshot listing page.
 func HandleSnapshotPage(snapshotDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		infos, err := snapshot.ListSnapshots(snapshotDir)
@@ -160,6 +165,7 @@ func HandleSnapshotPage(snapshotDir string) http.HandlerFunc {
 	}
 }
 
+// HandleHeatmapPartial renders the heatmap fragment for one control and quarter selection.
 func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.URL.Query().Get("controlId")
@@ -212,6 +218,7 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// buildBucketJSON reduces one aggregate into the UTC holding series used by the heatmap.
 func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string, quarterIndex, numStates int) string {
 	if modelID == "" {
 		return ""
@@ -228,7 +235,9 @@ func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string,
 	}
 	copy(b.Data(), data)
 
-	// Sum holding times across all states for the UTC clock to produce a 2016-element array
+	// The heatmap is intentionally a single normalized view: UTC holding time
+	// summed across states. The aggregate still retains all other clocks and
+	// transition counters for future visualizations.
 	buckets := make([]uint64, domain.BucketsPerWeek)
 	for state := 0; state < numStates; state++ {
 		for bkt := 0; bkt < domain.BucketsPerWeek; bkt++ {
@@ -251,12 +260,14 @@ func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string,
 	return string(jsonBytes)
 }
 
+// quarterLabel formats the internal quarter index for display.
 func quarterLabel(qi int) string {
 	year := 1970 + qi/4
 	q := qi%4 + 1
 	return fmt.Sprintf("%d Q%d", year, q)
 }
 
+// formatBytes renders byte counts using compact binary-style units for the UI.
 func formatBytes(b int64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%d B", b)

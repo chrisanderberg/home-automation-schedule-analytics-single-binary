@@ -13,6 +13,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
+// ValidateHolding rejects holding payloads that cannot be represented as aggregate updates.
 func ValidateHolding(input HoldingInput) error {
 	if input.ControlID == "" || input.ModelID == "" {
 		return ErrInvalidInput
@@ -26,6 +27,7 @@ func ValidateHolding(input HoldingInput) error {
 	return nil
 }
 
+// IngestHolding splits one holding interval into quarter-scoped aggregate updates.
 func IngestHolding(ctx context.Context, db *sql.DB, cfg Config, input HoldingInput) error {
 	if err := ValidateHolding(input); err != nil {
 		return fmt.Errorf("%w: %w", ErrValidation, err)
@@ -59,6 +61,7 @@ func IngestHolding(ctx context.Context, db *sql.DB, cfg Config, input HoldingInp
 	return nil
 }
 
+// applyHoldingQuarter adds one quarter-bounded holding interval into every clock view of an aggregate.
 func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateKey, numStates int, state int, startMs int64, endMs int64, loc *time.Location, latitude float64, longitude float64) error {
 	return storage.UpdateAggregate(ctx, db, key, numStates, func(data []byte) error {
 		b, err := domain.NewBlob(numStates)
@@ -67,6 +70,8 @@ func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateK
 		}
 		copy(b.Data(), data)
 
+		// Each ingest event fans out into every supported clock representation, but
+		// all of those counters live in the same quarter-scoped aggregate blob.
 		utcSpans, err := domain.SplitIntervalUTC(startMs, endMs)
 		if err != nil {
 			return err
@@ -115,6 +120,7 @@ func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateK
 	})
 }
 
+// logHoldingUndefinedClock records intervals that cannot be placed on the unequal-hours clock.
 func logHoldingUndefinedClock(startMs, endMs int64, latitude, longitude float64) {
 	log.Printf(
 		"holding ingest skipped unequal-hours spans for undefined clock: startMs=%d endMs=%d latitude=%f longitude=%f clock=%d",
@@ -122,6 +128,7 @@ func logHoldingUndefinedClock(startMs, endMs int64, latitude, longitude float64)
 	)
 }
 
+// applyHoldingClockSpans adds a list of bucket durations to one state's counters for a single clock.
 func applyHoldingClockSpans(b *domain.Blob, numStates int, state int, clock int, spans []domain.BucketSpan) error {
 	for _, s := range spans {
 		idx, err := domain.HoldIndex(state, clock, s.Bucket, numStates)

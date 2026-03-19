@@ -19,6 +19,7 @@ type ControlPageData struct {
 	BucketJSON  string
 }
 
+// quarterButtonClass returns the CSS class for a quarter selector button.
 func quarterButtonClass(selected bool) string {
 	if selected {
 		return "quarter-btn selected"
@@ -26,6 +27,7 @@ func quarterButtonClass(selected bool) string {
 	return "quarter-btn"
 }
 
+// ControlPage renders the detail view for one control and its heatmap controls.
 templ ControlPage(data ControlPageData) {
 	@Layout(data.ControlID) {
 		<div class="control-header">
@@ -69,6 +71,7 @@ templ ControlPage(data ControlPageData) {
 	}
 }
 
+// HeatmapCanvas renders the canvas container consumed by the client-side heatmap script.
 templ HeatmapCanvas(bucketJSON string) {
 	<div class="heatmap-wrapper">
 		<canvas class="heatmap" data-buckets={ bucketJSON } width="900" height="200"></canvas>

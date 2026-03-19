@@ -8,6 +8,7 @@ type SnapshotEntry struct {
 	ModTime string
 }
 
+// displaySnapshots limits the rendered snapshot list to the newest entries shown in the UI.
 func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
 	if len(snapshots) > 50 {
 		return snapshots[:50]
@@ -15,6 +16,7 @@ func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
 	return snapshots
 }
 
+// SnapshotPage renders the snapshot listing and export action.
 templ SnapshotPage(snapshots []SnapshotEntry) {
 	@Layout("Snapshots") {
 		<h1>Snapshots</h1>

@@ -15,6 +15,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
+// openTestDB creates an in-memory handler test database with the application schema loaded.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := storage.Open(":memory:")
@@ -28,10 +29,12 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// testConfig returns a minimal ingest configuration suitable for handler tests.
 func testConfig() ingest.Config {
 	return ingest.Config{TimeZone: "UTC", Latitude: 0, Longitude: 0}
 }
 
+// postJSON sends a JSON POST request to a handler and captures the response.
 func postJSON(handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
 	data, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
@@ -41,6 +44,7 @@ func postJSON(handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
 	return w
 }
 
+// postRaw sends a raw JSON body to a handler and captures the response.
 func postRaw(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -49,6 +53,7 @@ func postRaw(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
 	return w
 }
 
+// TestHealthReturns200 verifies the health endpoint responds successfully.
 func TestHealthReturns200(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	w := httptest.NewRecorder()
@@ -59,6 +64,7 @@ func TestHealthReturns200(t *testing.T) {
 	}
 }
 
+// TestControlsAccepted verifies valid control payloads are accepted and persisted.
 func TestControlsAccepted(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "light", "controlType": "discrete", "numStates": 3}
@@ -76,6 +82,7 @@ func TestControlsAccepted(t *testing.T) {
 	}
 }
 
+// TestControlsRejectsMissingFields verifies controls requests fail when required fields are missing.
 func TestControlsRejectsMissingFields(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlType": "discrete", "numStates": 3}
@@ -85,6 +92,7 @@ func TestControlsRejectsMissingFields(t *testing.T) {
 	}
 }
 
+// TestControlsRejectEmptyBody verifies an empty request body is rejected as invalid JSON.
 func TestControlsRejectEmptyBody(t *testing.T) {
 	db := openTestDB(t)
 	w := postRaw(HandleControls(db), "")
@@ -93,6 +101,7 @@ func TestControlsRejectEmptyBody(t *testing.T) {
 	}
 }
 
+// TestControlsRejectTrailingJSON verifies the API rejects multiple concatenated JSON values.
 func TestControlsRejectTrailingJSON(t *testing.T) {
 	db := openTestDB(t)
 	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"discrete","numStates":3}{"extra":true}`)
@@ -101,6 +110,7 @@ func TestControlsRejectTrailingJSON(t *testing.T) {
 	}
 }
 
+// TestControlsAcceptSingleJSONValueWithTrailingWhitespace verifies trailing whitespace does not invalidate a single JSON payload.
 func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 	db := openTestDB(t)
 	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"discrete\",\"numStates\":3\n}\n")
@@ -109,6 +119,7 @@ func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 	}
 }
 
+// TestControlsRejectsInvalidNumStates verifies controls validation enforces the supported state range.
 func TestControlsRejectsInvalidNumStates(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 1}
@@ -118,6 +129,7 @@ func TestControlsRejectsInvalidNumStates(t *testing.T) {
 	}
 }
 
+// TestControlsRejectsBadControlType verifies unknown control types are rejected.
 func TestControlsRejectsBadControlType(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "x", "controlType": "invalid", "numStates": 2}
@@ -127,6 +139,7 @@ func TestControlsRejectsBadControlType(t *testing.T) {
 	}
 }
 
+// TestControlsRejectsStateLabelsMismatch verifies provided state labels must match the configured state count.
 func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 2, "stateLabels": []string{"a"}}
@@ -136,6 +149,7 @@ func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	}
 }
 
+// TestControlsRejectsSliderWithNonSixStates verifies slider controls keep their fixed six-state contract.
 func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "slider", "controlType": "slider", "numStates": 5}
@@ -145,6 +159,7 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	}
 }
 
+// TestHoldingAccepted verifies valid holding ingest requests are accepted.
 func TestHoldingAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -160,6 +175,7 @@ func TestHoldingAccepted(t *testing.T) {
 	}
 }
 
+// TestHoldingRejectsUnknownControl verifies holding ingest returns a client error for unknown controls.
 func TestHoldingRejectsUnknownControl(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "nope", "modelId": "m", "state": 0, "startTimeMs": 1000, "endTimeMs": 2000}
@@ -169,6 +185,7 @@ func TestHoldingRejectsUnknownControl(t *testing.T) {
 	}
 }
 
+// TestTransitionAccepted verifies valid transition ingest requests are accepted.
 func TestTransitionAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -184,6 +201,7 @@ func TestTransitionAccepted(t *testing.T) {
 	}
 }
 
+// TestTransitionRejectsSelfTransition verifies self-transitions are rejected at the handler boundary.
 func TestTransitionRejectsSelfTransition(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -199,6 +217,7 @@ func TestTransitionRejectsSelfTransition(t *testing.T) {
 	}
 }
 
+// TestSnapshotExportsFile verifies the snapshot endpoint writes a file and returns its filename.
 func TestSnapshotExportsFile(t *testing.T) {
 	db := openTestDB(t)
 	dir := t.TempDir()

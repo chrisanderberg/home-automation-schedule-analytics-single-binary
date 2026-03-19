@@ -2,6 +2,7 @@ package domain
 
 import "testing"
 
+// TestBlobValueCountFormula verifies blob sizing matches the packed counter formula for every supported state count.
 func TestBlobValueCountFormula(t *testing.T) {
 	for n := MinStates; n <= MaxStates; n++ {
 		b, err := NewBlob(n)
@@ -18,6 +19,7 @@ func TestBlobValueCountFormula(t *testing.T) {
 	}
 }
 
+// TestHoldingRegionBounds verifies holding counters stay within the leading region of the blob.
 func TestHoldingRegionBounds(t *testing.T) {
 	n := 4
 	for s := 0; s < n; s++ {
@@ -35,6 +37,7 @@ func TestHoldingRegionBounds(t *testing.T) {
 	}
 }
 
+// TestTransitionRegionBounds verifies transition counters stay within the trailing region of the blob.
 func TestTransitionRegionBounds(t *testing.T) {
 	n := 4
 	for from := 0; from < n; from++ {
@@ -57,6 +60,7 @@ func TestTransitionRegionBounds(t *testing.T) {
 	}
 }
 
+// TestTransitionGroupsCoverAllPairs verifies every non-self transition pair maps to a unique group.
 func TestTransitionGroupsCoverAllPairs(t *testing.T) {
 	n := 5
 	seen := make(map[int]struct{})

@@ -11,6 +11,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
+// TestHoldingIngestSingleBucketUTC verifies one holding interval updates the expected buckets for every clock.
 func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
@@ -102,6 +103,7 @@ func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 	}
 }
 
+// TestTransitionIngestSingleBucketUTC verifies one transition event increments the expected buckets for every clock.
 func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
@@ -184,6 +186,7 @@ func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 	}
 }
 
+// TestIngestValidationErrors verifies ingest surfaces invalid inputs through the shared validation classification.
 func TestIngestValidationErrors(t *testing.T) {
 	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
@@ -215,6 +218,7 @@ func TestIngestValidationErrors(t *testing.T) {
 	}
 }
 
+// TestApplyHoldingClockSpansSaturatesAtMaxUint64 verifies holding counters saturate instead of overflowing.
 func TestApplyHoldingClockSpansSaturatesAtMaxUint64(t *testing.T) {
 	b, err := domain.NewBlob(2)
 	if err != nil {
@@ -243,6 +247,7 @@ func TestApplyHoldingClockSpansSaturatesAtMaxUint64(t *testing.T) {
 	}
 }
 
+// TestIncrementTransitionCountSaturatesAtMaxUint64 verifies transition counters saturate instead of overflowing.
 func TestIncrementTransitionCountSaturatesAtMaxUint64(t *testing.T) {
 	b, err := domain.NewBlob(2)
 	if err != nil {

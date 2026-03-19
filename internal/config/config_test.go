@@ -2,6 +2,7 @@ package config
 
 import "testing"
 
+// TestLoadRejectsInvalidPort verifies out-of-range ports fail configuration loading.
 func TestLoadRejectsInvalidPort(t *testing.T) {
 	t.Setenv("HAA_LATITUDE", "1")
 	t.Setenv("HAA_LONGITUDE", "2")
@@ -13,6 +14,7 @@ func TestLoadRejectsInvalidPort(t *testing.T) {
 	}
 }
 
+// TestLoadAcceptsValidPort verifies valid ports are preserved in the loaded configuration.
 func TestLoadAcceptsValidPort(t *testing.T) {
 	t.Setenv("HAA_LATITUDE", "1")
 	t.Setenv("HAA_LONGITUDE", "2")

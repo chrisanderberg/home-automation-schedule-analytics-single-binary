@@ -12,6 +12,7 @@ var (
 	ErrValidation   = errors.New("validation error")
 )
 
+// IsValidationError reports whether an ingest failure should map to client input error handling.
 func IsValidationError(err error) bool {
 	return errors.Is(err, ErrValidation) ||
 		errors.Is(err, ErrInvalidInput) ||

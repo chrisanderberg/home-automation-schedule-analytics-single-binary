@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// OpenTestDB provisions an in-memory database with schema initialized for tests.
 func OpenTestDB(
 	t *testing.T,
 	open func(string) (*sql.DB, error),

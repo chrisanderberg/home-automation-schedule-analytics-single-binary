@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// TestSolarBucketsDefined verifies all solar clock bucket calculators produce valid buckets in normal conditions.
 func TestSolarBucketsDefined(t *testing.T) {
 	lat := 37.7749
 	lon := -122.4194
@@ -34,6 +35,7 @@ func TestSolarBucketsDefined(t *testing.T) {
 	}
 }
 
+// TestUnequalHoursUndefinedOnly verifies polar-night conditions only invalidate the unequal-hours clock.
 func TestUnequalHoursUndefinedOnly(t *testing.T) {
 	lat := 78.2232
 	lon := 15.6469
@@ -64,6 +66,7 @@ func TestUnequalHoursUndefinedOnly(t *testing.T) {
 	}
 }
 
+// TestSolarCoordinateValidation verifies solar bucket and split helpers reject invalid coordinates.
 func TestSolarCoordinateValidation(t *testing.T) {
 	timestamp := time.Date(2020, 6, 1, 12, 0, 0, 0, time.UTC).UnixMilli()
 

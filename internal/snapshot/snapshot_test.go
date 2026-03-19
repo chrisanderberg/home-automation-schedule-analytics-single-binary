@@ -11,6 +11,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
+// TestExportCreatesConsistentCopy verifies snapshot export preserves schema objects and control data.
 func TestExportCreatesConsistentCopy(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {
@@ -66,6 +67,7 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 	}
 }
 
+// TestExportGeneratesUniquePaths verifies repeated exports do not reuse snapshot filenames.
 func TestExportGeneratesUniquePaths(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {
@@ -92,6 +94,7 @@ func TestExportGeneratesUniquePaths(t *testing.T) {
 	}
 }
 
+// TestListSnapshotsOrder verifies listed snapshots are sorted newest first.
 func TestListSnapshotsOrder(t *testing.T) {
 	dir := t.TempDir()
 
@@ -125,6 +128,7 @@ func TestListSnapshotsOrder(t *testing.T) {
 	}
 }
 
+// TestListSnapshotsMissingDir verifies a missing snapshot directory behaves like an empty listing.
 func TestListSnapshotsMissingDir(t *testing.T) {
 	infos, err := ListSnapshots("/nonexistent/path")
 	if err != nil {

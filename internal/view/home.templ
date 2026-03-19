@@ -11,6 +11,7 @@ type ControlWithStats struct {
 	AggregateCount int
 }
 
+// HomePage renders the top-level control listing view.
 templ HomePage(controls []ControlWithStats) {
 	@Layout("Home") {
 		<h1>Controls</h1>

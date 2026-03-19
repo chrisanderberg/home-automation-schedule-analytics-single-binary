@@ -16,6 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Export writes a point-in-time SQLite snapshot into the configured snapshot directory.
 func Export(ctx context.Context, db *sql.DB, snapshotDir string) (string, error) {
 	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
 		return "", fmt.Errorf("create snapshot dir: %w", err)
@@ -48,6 +49,7 @@ func Export(ctx context.Context, db *sql.DB, snapshotDir string) (string, error)
 	return destPath, nil
 }
 
+// snapshotFilename generates a collision-resistant snapshot file name.
 func snapshotFilename() (string, error) {
 	var suffix [4]byte
 	if _, err := rand.Read(suffix[:]); err != nil {
@@ -60,6 +62,7 @@ func snapshotFilename() (string, error) {
 	), nil
 }
 
+// copySQLiteDB recreates schema and data in a fresh SQLite file using a read transaction.
 func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	dest, err := sql.Open("sqlite", destPath)
 	if err != nil {
@@ -86,6 +89,8 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	if err != nil {
 		return err
 	}
+	// Tables are created before data copy, while indexes, triggers, and views
+	// are replayed afterwards so bulk inserts do not pay their maintenance cost.
 	if err := execDDLs(ctx, dest, tableDDLs); err != nil {
 		return err
 	}
@@ -111,6 +116,7 @@ type schemaDDL struct {
 	sql        string
 }
 
+// loadSchemaDDLs separates table DDLs from other schema objects for staged replay.
 func loadSchemaDDLs(ctx context.Context, db queryContexter) ([]string, []string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT type, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid`)
 	if err != nil {
@@ -137,6 +143,7 @@ func loadSchemaDDLs(ctx context.Context, db queryContexter) ([]string, []string,
 	return tableDDLs, otherDDLs, nil
 }
 
+// execDDLs executes a list of schema statements against the destination database.
 func execDDLs(ctx context.Context, db *sql.DB, ddls []string) error {
 	for _, ddl := range ddls {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
@@ -150,6 +157,7 @@ type queryContexter interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
+// tableNames lists user tables in deterministic order for snapshot copying.
 func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -168,6 +176,7 @@ func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
 	return names, rows.Err()
 }
 
+// copyTable bulk-copies one table's rows into the snapshot database.
 func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table string) error {
 	if isInternalSQLiteName(table) {
 		return nil
@@ -209,6 +218,8 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 		return tx, stmt, nil
 	}
 
+	// Batched commits keep snapshot export bounded in memory while avoiding a
+	// transaction per row for large aggregate tables.
 	tx, stmt, err := startBatch()
 	if err != nil {
 		return err
@@ -295,6 +306,7 @@ type SnapshotInfo struct {
 	ModTime time.Time
 }
 
+// ListSnapshots returns snapshot files sorted from newest to oldest.
 func ListSnapshots(snapshotDir string) ([]SnapshotInfo, error) {
 	entries, err := os.ReadDir(snapshotDir)
 	if err != nil {
@@ -328,6 +340,7 @@ func ListSnapshots(snapshotDir string) ([]SnapshotInfo, error) {
 	return infos, nil
 }
 
+// isInternalSQLiteName reports whether a schema object is reserved to SQLite itself.
 func isInternalSQLiteName(name string) bool {
 	return strings.HasPrefix(name, "sqlite_")
 }

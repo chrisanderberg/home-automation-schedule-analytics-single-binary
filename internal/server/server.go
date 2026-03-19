@@ -16,6 +16,7 @@ type Config struct {
 	StaticFS    fs.FS
 }
 
+// New wires the API, page, and static routes into a single HTTP handler.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 
@@ -39,4 +40,3 @@ func New(cfg Config) http.Handler {
 
 	return mux
 }
-

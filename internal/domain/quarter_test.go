@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// TestSplitQuarterIntervalUTCQ1ToQ2 verifies quarter splitting inserts a boundary at the UTC quarter transition.
 func TestSplitQuarterIntervalUTCQ1ToQ2(t *testing.T) {
 	start := time.Date(2020, 3, 31, 23, 0, 0, 0, time.UTC)
 	end := time.Date(2020, 4, 1, 1, 0, 0, 0, time.UTC)

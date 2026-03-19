@@ -15,6 +15,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
+// TestHomePageRendersControls verifies the home page renders persisted controls.
 func TestHomePageRendersControls(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -40,6 +41,7 @@ func TestHomePageRendersControls(t *testing.T) {
 	}
 }
 
+// TestHomePageEscapesControlLinks verifies control links are URL-escaped in the rendered page.
 func TestHomePageEscapesControlLinks(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -60,6 +62,7 @@ func TestHomePageEscapesControlLinks(t *testing.T) {
 	}
 }
 
+// TestHomePageEmptyState verifies the home page shows an empty state with no controls.
 func TestHomePageEmptyState(t *testing.T) {
 	db := openTestDB(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -74,6 +77,7 @@ func TestHomePageEmptyState(t *testing.T) {
 	}
 }
 
+// TestControlPageReturns200 verifies the control detail page renders for an existing control.
 func TestControlPageReturns200(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
@@ -96,6 +100,7 @@ func TestControlPageReturns200(t *testing.T) {
 	}
 }
 
+// TestControlPageSelectsLatestQuarterAndOrdersOptions verifies quarter buttons are sorted and default to the newest quarter.
 func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -138,6 +143,7 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	}
 }
 
+// TestControlPageEscapesQuarterRequests verifies the heatmap partial URLs escape control identifiers correctly.
 func TestControlPageEscapesQuarterRequests(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -167,6 +173,7 @@ func TestControlPageEscapesQuarterRequests(t *testing.T) {
 	}
 }
 
+// TestControlPageReturns404 verifies missing controls return a not-found page response.
 func TestControlPageReturns404(t *testing.T) {
 	db := openTestDB(t)
 	req := httptest.NewRequest(http.MethodGet, "/controls/missing", nil)
@@ -179,6 +186,7 @@ func TestControlPageReturns404(t *testing.T) {
 	}
 }
 
+// TestSnapshotPageRendersEmpty verifies the snapshot page shows an empty state when no files exist.
 func TestSnapshotPageRendersEmpty(t *testing.T) {
 	dir := t.TempDir()
 	req := httptest.NewRequest(http.MethodGet, "/snapshots", nil)
@@ -193,6 +201,7 @@ func TestSnapshotPageRendersEmpty(t *testing.T) {
 	}
 }
 
+// TestSnapshotPageRendersList verifies the snapshot page renders existing snapshot filenames.
 func TestSnapshotPageRendersList(t *testing.T) {
 	dir := t.TempDir()
 	f, err := os.Create(filepath.Join(dir, "snapshot-20260101-120000.sqlite"))
@@ -213,6 +222,7 @@ func TestSnapshotPageRendersList(t *testing.T) {
 	}
 }
 
+// TestSnapshotPageTruncatesLongLists verifies the snapshot page limits long listings and reports omitted entries.
 func TestSnapshotPageTruncatesLongLists(t *testing.T) {
 	dir := t.TempDir()
 	for i := 0; i < 52; i++ {
@@ -240,6 +250,7 @@ func TestSnapshotPageTruncatesLongLists(t *testing.T) {
 	}
 }
 
+// TestHeatmapPartialDoesNotCreateMissingAggregate verifies empty heatmap requests do not create new aggregates.
 func TestHeatmapPartialDoesNotCreateMissingAggregate(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -282,6 +293,7 @@ func TestHeatmapPartialDoesNotCreateMissingAggregate(t *testing.T) {
 	}
 }
 
+// TestHeatmapPartialReturns500OnControlLookupError verifies heatmap rendering fails closed on storage errors.
 func TestHeatmapPartialReturns500OnControlLookupError(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {

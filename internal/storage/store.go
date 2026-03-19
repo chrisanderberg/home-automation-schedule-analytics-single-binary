@@ -16,6 +16,7 @@ import (
 var ErrNotFound = errors.New("not found")
 var ErrAggregateBlobSizeMismatch = errors.New("aggregate blob size mismatch")
 
+// Open creates a SQLite handle configured for this repository's schema expectations.
 func Open(dbPath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
@@ -27,11 +28,13 @@ func Open(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
+// InitSchema applies the full schema to an opened database.
 func InitSchema(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, Schema)
 	return err
 }
 
+// UpsertControl creates or replaces the metadata row for one control definition.
 func UpsertControl(ctx context.Context, db *sql.DB, control Control) error {
 	labels, err := encodeLabels(control.StateLabels)
 	if err != nil {
@@ -53,6 +56,7 @@ func UpsertControl(ctx context.Context, db *sql.DB, control Control) error {
 	return err
 }
 
+// GetControl loads one control definition by identifier.
 func GetControl(ctx context.Context, db *sql.DB, controlID string) (Control, error) {
 	row := db.QueryRowContext(ctx, `SELECT control_id, control_type, num_states, state_labels FROM controls WHERE control_id = ?`, controlID)
 	var control Control
@@ -75,6 +79,7 @@ func GetControl(ctx context.Context, db *sql.DB, controlID string) (Control, err
 	return control, nil
 }
 
+// ListControls returns all control definitions sorted by control id.
 func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 	rows, err := db.QueryContext(ctx, `SELECT control_id, control_type, num_states, state_labels FROM controls ORDER BY control_id`)
 	if err != nil {
@@ -102,6 +107,7 @@ func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 	return controls, rows.Err()
 }
 
+// ListAggregateKeys returns the aggregate keys recorded for a control in stable display order.
 func ListAggregateKeys(ctx context.Context, db *sql.DB, controlID string) ([]AggregateKey, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT control_id, model_id, quarter_index FROM aggregates WHERE control_id = ? ORDER BY model_id, quarter_index`,
@@ -122,6 +128,7 @@ func ListAggregateKeys(ctx context.Context, db *sql.DB, controlID string) ([]Agg
 	return keys, rows.Err()
 }
 
+// validateAggregateBlobSize checks that a stored blob matches the expected packed layout.
 func validateAggregateBlobSize(key AggregateKey, numStates int, blobBytes []byte) error {
 	expectedLen := numStates * numStates * domain.GroupSize * 8
 	if len(blobBytes) != expectedLen {
@@ -134,6 +141,7 @@ func validateAggregateBlobSize(key AggregateKey, numStates int, blobBytes []byte
 	return nil
 }
 
+// GetOrCreateAggregate returns an existing aggregate blob or inserts a zeroed one.
 func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int) ([]byte, error) {
 	row := db.QueryRowContext(
 		ctx,
@@ -180,6 +188,7 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 	}
 }
 
+// GetAggregate returns an existing aggregate blob without creating missing rows.
 func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int) ([]byte, error) {
 	row := db.QueryRowContext(
 		ctx,
@@ -199,6 +208,7 @@ func GetAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates i
 	return blobBytes, nil
 }
 
+// sqliteDSN appends the required SQLite pragmas to a database path or DSN.
 func sqliteDSN(dbPath string) string {
 	const pragma = "_pragma=foreign_keys(1)"
 	if strings.Contains(dbPath, "?") {
@@ -207,6 +217,7 @@ func sqliteDSN(dbPath string) string {
 	return dbPath + "?" + pragma
 }
 
+// UpdateAggregate applies a serialized read-modify-write update to one aggregate blob.
 func UpdateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int, update func([]byte) error) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -214,6 +225,8 @@ func UpdateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numState
 	}
 	defer conn.Close()
 
+	// Aggregate updates are read-modify-write on a single blob, so we take an
+	// IMMEDIATE transaction to serialize writers before reading current bytes.
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return err
 	}
@@ -243,6 +256,7 @@ type execContexter interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// updateAggregateWithQueryExec runs aggregate mutation logic against abstract query and exec dependencies.
 func updateAggregateWithQueryExec(
 	ctx context.Context,
 	queryDB queryRower,
@@ -263,6 +277,8 @@ func updateAggregateWithQueryExec(
 			return err
 		}
 	case sql.ErrNoRows:
+		// Callers treat aggregate existence as an implementation detail, so the
+		// update path materializes the zeroed blob on first write.
 		b, err := domain.NewBlob(numStates)
 		if err != nil {
 			return err
@@ -288,6 +304,7 @@ func updateAggregateWithQueryExec(
 	return err
 }
 
+// encodeLabels serializes optional control labels for storage.
 func encodeLabels(labels []string) (string, error) {
 	if len(labels) == 0 {
 		return "", nil
@@ -299,6 +316,7 @@ func encodeLabels(labels []string) (string, error) {
 	return string(data), nil
 }
 
+// decodeLabels deserializes optional control labels from storage.
 func decodeLabels(raw string) ([]string, error) {
 	if raw == "" {
 		return nil, nil

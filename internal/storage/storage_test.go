@@ -10,6 +10,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
+// TestControlCRUD verifies controls round-trip through storage and missing lookups return ErrNotFound.
 func TestControlCRUD(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -40,6 +41,7 @@ func TestControlCRUD(t *testing.T) {
 	}
 }
 
+// TestAggregateCreateUpdate verifies aggregates can be created, mutated, and read back.
 func TestAggregateCreateUpdate(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -88,6 +90,7 @@ func TestAggregateCreateUpdate(t *testing.T) {
 	}
 }
 
+// TestGetAggregateReturnsNotFoundWithoutCreatingRow verifies reads do not materialize missing aggregate rows.
 func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -106,6 +109,7 @@ func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
 	}
 }
 
+// TestAggregateConcurrentUpdates verifies serialized aggregate updates preserve all increments.
 func TestAggregateConcurrentUpdates(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -153,6 +157,7 @@ func TestAggregateConcurrentUpdates(t *testing.T) {
 	}
 }
 
+// TestUpdateAggregateRejectsMismatchedBlobSize verifies update paths reject corrupt aggregate blobs.
 func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -177,6 +182,7 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	}
 }
 
+// TestGetOrCreateAggregateRejectsMismatchedBlobSize verifies get-or-create also rejects corrupt aggregate blobs.
 func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -199,6 +205,7 @@ func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	}
 }
 
+// TestGetAggregateRejectsMismatchedBlobSize verifies direct aggregate reads reject corrupt blob sizes.
 func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -224,6 +231,7 @@ func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	}
 }
 
+// TestListControls verifies controls are returned in control-id order.
 func TestListControls(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
@@ -247,6 +255,7 @@ func TestListControls(t *testing.T) {
 	}
 }
 
+// TestListAggregateKeys verifies aggregate keys are returned in stable model ordering.
 func TestListAggregateKeys(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()

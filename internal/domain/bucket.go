@@ -7,11 +7,13 @@ type BucketSpan struct {
 	Millis int64
 }
 
+// BucketAtUTC maps a UTC timestamp to its weekly five-minute bucket.
 func BucketAtUTC(timestampMs int64) (int, error) {
 	t := time.UnixMilli(timestampMs).UTC()
 	return bucketFromTime(t), nil
 }
 
+// BucketAtLocal maps a timestamp to its weekly five-minute bucket in a specific time zone.
 func BucketAtLocal(timestampMs int64, loc *time.Location) (int, error) {
 	if loc == nil {
 		return 0, ErrNilLocation
@@ -20,6 +22,7 @@ func BucketAtLocal(timestampMs int64, loc *time.Location) (int, error) {
 	return bucketFromTime(t), nil
 }
 
+// SplitIntervalUTC breaks a UTC interval into contiguous five-minute bucket spans.
 func SplitIntervalUTC(startMs, endMs int64) ([]BucketSpan, error) {
 	if endMs <= startMs {
 		return nil, ErrInvalidInterval
@@ -45,6 +48,7 @@ func SplitIntervalUTC(startMs, endMs int64) ([]BucketSpan, error) {
 	return spans, nil
 }
 
+// SplitIntervalLocal breaks a local-time interval into contiguous five-minute bucket spans.
 func SplitIntervalLocal(startMs, endMs int64, loc *time.Location) ([]BucketSpan, error) {
 	if loc == nil {
 		return nil, ErrNilLocation
@@ -73,6 +77,7 @@ func SplitIntervalLocal(startMs, endMs int64, loc *time.Location) ([]BucketSpan,
 	return spans, nil
 }
 
+// nextBoundaryUTC returns the next UTC five-minute boundary after a timestamp.
 func nextBoundaryUTC(timestampMs int64) int64 {
 	t := time.UnixMilli(timestampMs).UTC()
 	minute := (t.Minute()/5 + 1) * 5
@@ -89,6 +94,7 @@ func nextBoundaryUTC(timestampMs int64) int64 {
 	return boundary.UnixMilli()
 }
 
+// nextBoundaryLocal returns the next local five-minute boundary after a timestamp.
 func nextBoundaryLocal(timestampMs int64, loc *time.Location) int64 {
 	t := time.UnixMilli(timestampMs).In(loc)
 	minute := (t.Minute()/5 + 1) * 5
@@ -108,6 +114,7 @@ func nextBoundaryLocal(timestampMs int64, loc *time.Location) int64 {
 	return boundaryMs
 }
 
+// bucketFromTime converts a wall-clock time into the repository's Monday-based weekly bucket index.
 func bucketFromTime(t time.Time) int {
 	dayIndex := (int(t.Weekday()) + 6) % 7
 	bucketWithinDay := t.Hour()*12 + (t.Minute() / 5)

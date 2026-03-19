@@ -16,6 +16,7 @@ type Config struct {
 	Port      string
 }
 
+// Load reads environment configuration, applies defaults, and validates ranges.
 func Load() (Config, error) {
 	tz := envDefault("HAA_TIMEZONE", "UTC")
 	loc, err := time.LoadLocation(tz)
@@ -58,6 +59,7 @@ func Load() (Config, error) {
 	}, nil
 }
 
+// envDefault returns an environment variable when set or a fallback otherwise.
 func envDefault(key, def string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
@@ -65,6 +67,7 @@ func envDefault(key, def string) string {
 	return def
 }
 
+// requiredFloat parses a required floating-point environment variable.
 func requiredFloat(key string) (float64, error) {
 	val := os.Getenv(key)
 	if val == "" {

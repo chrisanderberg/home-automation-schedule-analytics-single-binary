@@ -11,6 +11,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
+// ValidateTransition rejects transitions that do not describe a valid state change.
 func ValidateTransition(input TransitionInput) error {
 	if input.ControlID == "" || input.ModelID == "" {
 		return ErrInvalidInput
@@ -24,6 +25,7 @@ func ValidateTransition(input TransitionInput) error {
 	return nil
 }
 
+// IngestTransition records one transition event into the quarter aggregate for every clock variant.
 func IngestTransition(ctx context.Context, db *sql.DB, cfg Config, input TransitionInput) error {
 	if err := ValidateTransition(input); err != nil {
 		return fmt.Errorf("%w: %w", ErrValidation, err)
@@ -50,6 +52,8 @@ func IngestTransition(ctx context.Context, db *sql.DB, cfg Config, input Transit
 		}
 		copy(b.Data(), data)
 
+		// A single transition contributes one count to the same bucket position
+		// across every clock variant so downstream comparisons stay aligned.
 		bucketUTC, err := domain.BucketAtUTC(input.TimestampMs)
 		if err != nil {
 			return err
@@ -95,6 +99,7 @@ func IngestTransition(ctx context.Context, db *sql.DB, cfg Config, input Transit
 	})
 }
 
+// incrementTransitionCount bumps one transition bucket unless the counter is already saturated.
 func incrementTransitionCount(b *domain.Blob, fromState int, toState int, numStates int, clock int, bucket int) error {
 	idx, err := domain.TransIndex(fromState, toState, clock, bucket, numStates)
 	if err != nil {
