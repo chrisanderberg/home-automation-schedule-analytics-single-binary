@@ -33,7 +33,13 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	}
 	defer dest.Close()
 
-	rows, err := src.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid`)
+	readTx, err := src.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("begin read tx: %w", err)
+	}
+	defer readTx.Rollback()
+
+	rows, err := readTx.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid`)
 	if err != nil {
 		return err
 	}
@@ -52,20 +58,24 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 		return err
 	}
 
-	tables, err := tableNames(ctx, src)
+	tables, err := tableNames(ctx, readTx)
 	if err != nil {
 		return err
 	}
 
 	for _, table := range tables {
-		if err := copyTable(ctx, src, dest, table); err != nil {
+		if err := copyTable(ctx, readTx, dest, table); err != nil {
 			return fmt.Errorf("copy table %s: %w", table, err)
 		}
 	}
 	return nil
 }
 
-func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
+type queryContexter interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -83,7 +93,7 @@ func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
 	return names, rows.Err()
 }
 
-func copyTable(ctx context.Context, src, dest *sql.DB, table string) error {
+func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table string) error {
 	rows, err := src.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %q", table))
 	if err != nil {
 		return err
