@@ -161,6 +161,8 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 			return nil, err
 		}
 		blobBytes = b.Data()
+		// This insert path is race-safe: concurrent creators can collide on the
+		// unique key and then fall through to the shared reread below.
 		_, err = db.ExecContext(
 			ctx,
 			`INSERT INTO aggregates (control_id, model_id, quarter_index, blob)
@@ -289,6 +291,8 @@ func updateAggregateWithQueryExec(
 	}
 
 	working := make([]byte, len(blobBytes))
+	// The callback always mutates a detached copy so partially applied writes are
+	// never observed if the update function returns an error.
 	copy(working, blobBytes)
 	if err := update(working); err != nil {
 		return err

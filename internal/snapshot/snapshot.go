@@ -27,6 +27,8 @@ func Export(ctx context.Context, db *sql.DB, snapshotDir string) (string, error)
 		return "", fmt.Errorf("generate snapshot filename: %w", err)
 	}
 	destPath := filepath.Join(snapshotDir, filename)
+	// Export writes into a temp file first and then renames it into place so the
+	// snapshot directory never exposes a partially copied database.
 	tempFile, err := os.CreateTemp(snapshotDir, "."+filename+".tmp-*")
 	if err != nil {
 		return "", fmt.Errorf("create temp snapshot file: %w", err)
@@ -246,6 +248,8 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 
 	rowCount := 0
 	for rows.Next() {
+		// Scan into generic values so SQLite driver types are preserved across the
+		// copy without needing per-column handling.
 		values := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range values {
@@ -267,6 +271,8 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 		}
 		rowCount++
 		if rowCount%500 == 0 {
+			// Periodic commits bound transaction size while still keeping the copy
+			// path much cheaper than one transaction per row.
 			if err := closeStmt(); err != nil {
 				_ = tx.Rollback()
 				return err

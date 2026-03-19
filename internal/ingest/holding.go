@@ -52,6 +52,8 @@ func IngestHolding(ctx context.Context, db *sql.DB, cfg Config, input HoldingInp
 		return err
 	}
 
+	// Aggregate rows are quarter-scoped, so longer holding intervals are applied
+	// to each affected quarter independently.
 	for _, span := range quarterSpans {
 		key := storage.AggregateKey{ControlID: input.ControlID, ModelID: input.ModelID, QuarterIndex: span.QuarterIndex}
 		if err := applyHoldingQuarter(ctx, db, key, control.NumStates, input.State, span.StartMs, span.EndMs, loc, cfg.Latitude, cfg.Longitude); err != nil {
@@ -107,6 +109,8 @@ func applyHoldingQuarter(ctx context.Context, db *sql.DB, key storage.AggregateK
 		unequalHoursSpans, err := domain.SplitIntervalUnequalHours(startMs, endMs, latitude, longitude)
 		if err != nil {
 			if errors.Is(err, domain.ErrUndefinedClock) {
+				// Polar-day or polar-night conditions only invalidate the unequal-hours
+				// clock; the other clock projections are still preserved.
 				logHoldingUndefinedClock(startMs, endMs, latitude, longitude)
 			} else {
 				return err

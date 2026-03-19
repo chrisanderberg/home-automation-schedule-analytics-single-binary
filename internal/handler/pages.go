@@ -84,6 +84,8 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 			StateLabels: control.StateLabels,
 		}
 
+		// Aggregate keys drive the available quarter buttons and also determine the
+		// single model currently surfaced by the UI.
 		quarterSet := make(map[int]string)
 		var modelID string
 		for _, k := range keys {
@@ -105,6 +107,8 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		// Quarter options are always presented in ascending order, while the
+		// default selection prefers the newest quarter when none is requested.
 		quarterIndexes := make([]int, 0, len(quarterSet))
 		latestQuarter := -1
 		for qi := range quarterSet {
@@ -200,6 +204,7 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 		}
 		var modelID string
 		for _, k := range keys {
+			// The partial follows the same single-model assumption as the full page.
 			modelID = k.ModelID
 			break
 		}

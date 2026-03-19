@@ -109,6 +109,8 @@ func nextBoundaryLocal(timestampMs int64, loc *time.Location) int64 {
 	boundary := time.Date(year, month, day, hour, minute, 0, 0, loc)
 	boundaryMs := boundary.UnixMilli()
 	if boundaryMs <= timestampMs {
+		// DST folds and gaps can cause the reconstructed local boundary to map
+		// backward or sideways in UTC, so fall back to one bucket width forward.
 		return timestampMs + int64(5*60*1000)
 	}
 	return boundaryMs

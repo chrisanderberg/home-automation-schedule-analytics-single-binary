@@ -48,6 +48,8 @@ func BucketAtUnequalHours(timestampMs int64, latitude, longitude float64) (int, 
 		return 0, err
 	}
 
+	// Start from apparent solar time so sunrise and sunset calculations are
+	// compared against the same solar-minute frame of reference.
 	eqTime := equationOfTimeMinutes(time.UnixMilli(timestampMs).UTC())
 	offsetMinutes := longitude*4 + eqTime
 
@@ -73,6 +75,8 @@ func BucketAtUnequalHours(timestampMs int64, latitude, longitude float64) (int, 
 	}
 
 	var pseudoMinutes float64
+	// Unequal hours normalize daylight and night into separate 12-hour windows,
+	// which keeps bucket indices comparable across seasons.
 	if solarMinutes >= sunrise && solarMinutes < sunset {
 		dayFraction := (solarMinutes - sunrise) / dayLength
 		pseudoMinutes = 360 + dayFraction*720
@@ -157,6 +161,8 @@ func unequalHoursBoundary(t time.Time, latitude, longitude float64) (time.Time, 
 	}
 	lastSameBucket := t
 	nextBucketStart := t.Add(1 * time.Minute)
+	// Search forward coarsely and then binary-search the changeover so boundary
+	// detection stays accurate without evaluating every millisecond.
 	for i := 0; i < 400; i++ {
 		b, err := BucketAtUnequalHours(nextBucketStart.UnixMilli(), latitude, longitude)
 		if err != nil {
@@ -212,6 +218,8 @@ func splitIntervalWithOffset(startMs, endMs int64, offsetMinutes func(int64) flo
 		offset := offsetMinutes(cur)
 		adj := time.UnixMilli(cur).UTC().Add(durationFromOffsetMinutes(offset))
 		bucket := bucketFromTime(adj)
+		// Bucket boundaries are found in the offset-adjusted frame and then
+		// translated back to UTC so persisted spans remain timestamp-based.
 		adjBoundary := nextBoundaryUTC(adj.UnixMilli())
 		boundaryUTC := time.UnixMilli(adjBoundary).Add(-durationFromOffsetMinutes(offset)).UnixMilli()
 		if boundaryUTC <= cur {
