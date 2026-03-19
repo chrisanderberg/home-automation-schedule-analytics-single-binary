@@ -78,19 +78,34 @@ func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 		}
 	}
 
-	utcSpans, _ := domain.SplitIntervalUTC(input.StartTimeMs, input.EndTimeMs)
+	utcSpans, err := domain.SplitIntervalUTC(input.StartTimeMs, input.EndTimeMs)
+	if err != nil {
+		t.Fatalf("split interval UTC: %v", err)
+	}
 	checkClockSpans(domain.ClockUTC, utcSpans, "UTC")
 
-	localSpans, _ := domain.SplitIntervalLocal(input.StartTimeMs, input.EndTimeMs, time.UTC)
+	localSpans, err := domain.SplitIntervalLocal(input.StartTimeMs, input.EndTimeMs, time.UTC)
+	if err != nil {
+		t.Fatalf("split interval local: %v", err)
+	}
 	checkClockSpans(domain.ClockLocal, localSpans, "Local")
 
-	meanSolarSpans, _ := domain.SplitIntervalMeanSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	meanSolarSpans, err := domain.SplitIntervalMeanSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("split interval mean solar: %v", err)
+	}
 	checkClockSpans(domain.ClockMeanSolar, meanSolarSpans, "MeanSolar")
 
-	apparentSolarSpans, _ := domain.SplitIntervalApparentSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	apparentSolarSpans, err := domain.SplitIntervalApparentSolar(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("split interval apparent solar: %v", err)
+	}
 	checkClockSpans(domain.ClockApparentSolar, apparentSolarSpans, "ApparentSolar")
 
-	unequalHoursSpans, _ := domain.SplitIntervalUnequalHours(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	unequalHoursSpans, err := domain.SplitIntervalUnequalHours(input.StartTimeMs, input.EndTimeMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("split interval unequal hours: %v", err)
+	}
 	checkClockSpans(domain.ClockUnequalHours, unequalHoursSpans, "UnequalHours")
 
 	otherIdx, _ := domain.HoldIndex(0, domain.ClockUTC, 0, 3)
@@ -145,19 +160,34 @@ func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 		}
 	}
 
-	utcBucket, _ := domain.BucketAtUTC(input.TimestampMs)
+	utcBucket, err := domain.BucketAtUTC(input.TimestampMs)
+	if err != nil {
+		t.Fatalf("bucket at UTC: %v", err)
+	}
 	checkTransitionClock(domain.ClockUTC, utcBucket, "UTC")
 
-	localBucket, _ := domain.BucketAtLocal(input.TimestampMs, time.UTC)
+	localBucket, err := domain.BucketAtLocal(input.TimestampMs, time.UTC)
+	if err != nil {
+		t.Fatalf("bucket at local: %v", err)
+	}
 	checkTransitionClock(domain.ClockLocal, localBucket, "Local")
 
-	meanSolarBucket, _ := domain.BucketAtMeanSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	meanSolarBucket, err := domain.BucketAtMeanSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("bucket at mean solar: %v", err)
+	}
 	checkTransitionClock(domain.ClockMeanSolar, meanSolarBucket, "MeanSolar")
 
-	apparentSolarBucket, _ := domain.BucketAtApparentSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	apparentSolarBucket, err := domain.BucketAtApparentSolar(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("bucket at apparent solar: %v", err)
+	}
 	checkTransitionClock(domain.ClockApparentSolar, apparentSolarBucket, "ApparentSolar")
 
-	unequalHoursBucket, _ := domain.BucketAtUnequalHours(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	unequalHoursBucket, err := domain.BucketAtUnequalHours(input.TimestampMs, cfg.Latitude, cfg.Longitude)
+	if err != nil {
+		t.Fatalf("bucket at unequal hours: %v", err)
+	}
 	checkTransitionClock(domain.ClockUnequalHours, unequalHoursBucket, "UnequalHours")
 
 	otherIdx, _ := domain.TransIndex(0, 1, domain.ClockUTC, 0, 3)

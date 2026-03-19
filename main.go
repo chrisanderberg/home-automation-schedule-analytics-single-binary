@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +19,9 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/server"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
+
+//go:embed static
+var embeddedStaticFS embed.FS
 
 func main() {
 	if err := run(); err != nil {
@@ -50,7 +55,10 @@ func run() error {
 		return fmt.Errorf("create snapshot dir: %w", err)
 	}
 
-	staticFS := os.DirFS("static")
+	staticFS, err := fs.Sub(embeddedStaticFS, "static")
+	if err != nil {
+		return fmt.Errorf("load embedded static fs: %w", err)
+	}
 
 	handler := server.New(server.Config{
 		DB: db,
