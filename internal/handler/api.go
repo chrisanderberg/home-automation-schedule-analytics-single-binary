@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/ingest"
@@ -121,6 +122,6 @@ func HandleSnapshots(db *sql.DB, snapshotDir string) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"snapshotPath": path})
+		writeJSON(w, http.StatusOK, map[string]string{"snapshotFilename": filepath.Base(path)})
 	}
 }

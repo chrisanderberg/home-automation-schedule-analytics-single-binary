@@ -216,7 +216,10 @@ func TestSnapshotExportsFile(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if _, err := os.Stat(resp["snapshotPath"]); err != nil {
+	if resp["snapshotFilename"] == "" {
+		t.Fatalf("expected snapshot filename in response")
+	}
+	if _, err := os.Stat(filepath.Join(snapDir, resp["snapshotFilename"])); err != nil {
 		t.Fatalf("snapshot file missing: %v", err)
 	}
 }

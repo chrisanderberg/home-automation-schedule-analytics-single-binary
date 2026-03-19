@@ -3,8 +3,8 @@
 set -eu
 
 truthy() {
-	case "${1:-}" in
-		1|true|TRUE|yes|YES|on|ON)
+	case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+		1|true|yes|on)
 			return 0
 			;;
 	esac

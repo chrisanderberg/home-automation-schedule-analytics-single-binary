@@ -2,30 +2,17 @@ package ingest
 
 import (
 	"context"
-	"database/sql"
 	"math"
 	"testing"
 	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
+	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
-func openTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := storage.Open(":memory:")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := storage.InitSchema(context.Background(), db); err != nil {
-		t.Fatalf("init schema: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
 func TestHoldingIngestSingleBucketUTC(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
 	cfg := Config{TimeZone: "UTC", Latitude: 37.7749, Longitude: -122.4194}
 
@@ -116,7 +103,7 @@ func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 }
 
 func TestTransitionIngestSingleBucketUTC(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
 	cfg := Config{TimeZone: "UTC", Latitude: 0, Longitude: 0}
 
@@ -198,7 +185,7 @@ func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 }
 
 func TestIngestValidationErrors(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, storage.Open, storage.InitSchema)
 	ctx := context.Background()
 	cfg := Config{TimeZone: "UTC", Latitude: 0, Longitude: 0}
 

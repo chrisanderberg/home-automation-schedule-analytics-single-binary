@@ -2,29 +2,16 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"sync"
 	"testing"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain"
+	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
-func openTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := Open(":memory:")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := InitSchema(context.Background(), db); err != nil {
-		t.Fatalf("init schema: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
 func TestControlCRUD(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	c := Control{
@@ -54,7 +41,7 @@ func TestControlCRUD(t *testing.T) {
 }
 
 func TestAggregateCreateUpdate(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeDiscrete, NumStates: 3}); err != nil {
@@ -102,7 +89,7 @@ func TestAggregateCreateUpdate(t *testing.T) {
 }
 
 func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	_, err := GetAggregate(ctx, db, AggregateKey{ControlID: "missing", ModelID: "m", QuarterIndex: 1}, 2)
@@ -120,7 +107,7 @@ func TestGetAggregateReturnsNotFoundWithoutCreatingRow(t *testing.T) {
 }
 
 func TestAggregateConcurrentUpdates(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
@@ -167,7 +154,7 @@ func TestAggregateConcurrentUpdates(t *testing.T) {
 }
 
 func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
@@ -191,7 +178,7 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 }
 
 func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
@@ -213,7 +200,7 @@ func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 }
 
 func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	_, err := db.ExecContext(ctx,
@@ -238,7 +225,7 @@ func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
 }
 
 func TestListControls(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "b", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
@@ -261,7 +248,7 @@ func TestListControls(t *testing.T) {
 }
 
 func TestListAggregateKeys(t *testing.T) {
-	db := openTestDB(t)
+	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
 	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
