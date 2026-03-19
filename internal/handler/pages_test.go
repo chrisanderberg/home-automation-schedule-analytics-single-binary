@@ -281,3 +281,19 @@ func TestHeatmapPartialDoesNotCreateMissingAggregate(t *testing.T) {
 		t.Fatalf("unexpected aggregate created: %+v", keys)
 	}
 }
+
+func TestHeatmapPartialReturns500OnControlLookupError(t *testing.T) {
+	db, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	req := httptest.NewRequest(http.MethodGet, "/partials/heatmap?controlId=mode&quarter=1", nil)
+	w := httptest.NewRecorder()
+	HandleHeatmapPartial(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}

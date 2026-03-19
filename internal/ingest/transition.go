@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
@@ -102,6 +103,9 @@ func incrementTransitionCount(b *domain.Blob, fromState int, toState int, numSta
 	v, err := b.GetU64(idx)
 	if err != nil {
 		return err
+	}
+	if v == math.MaxUint64 {
+		return nil
 	}
 	return b.SetU64(idx, v+1)
 }

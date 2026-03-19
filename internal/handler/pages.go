@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -58,7 +59,12 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 
 		control, err := storage.GetControl(r.Context(), db, controlID)
 		if err != nil {
-			http.NotFound(w, r)
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("get control %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 
@@ -171,7 +177,12 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 
 		control, err := storage.GetControl(r.Context(), db, controlID)
 		if err != nil {
-			http.NotFound(w, r)
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("get control %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 

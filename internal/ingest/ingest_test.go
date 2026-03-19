@@ -221,3 +221,30 @@ func TestApplyHoldingClockSpansSaturatesAtMaxUint64(t *testing.T) {
 		t.Fatalf("expected saturation at MaxUint64, got %d", got)
 	}
 }
+
+func TestIncrementTransitionCountSaturatesAtMaxUint64(t *testing.T) {
+	b, err := domain.NewBlob(2)
+	if err != nil {
+		t.Fatalf("new blob: %v", err)
+	}
+
+	idx, err := domain.TransIndex(0, 1, domain.ClockUTC, 0, 2)
+	if err != nil {
+		t.Fatalf("trans index: %v", err)
+	}
+	if err := b.SetU64(idx, math.MaxUint64); err != nil {
+		t.Fatalf("seed value: %v", err)
+	}
+
+	if err := incrementTransitionCount(b, 0, 1, 2, domain.ClockUTC, 0); err != nil {
+		t.Fatalf("increment transition count: %v", err)
+	}
+
+	got, err := b.GetU64(idx)
+	if err != nil {
+		t.Fatalf("get value: %v", err)
+	}
+	if got != math.MaxUint64 {
+		t.Fatalf("expected saturation at MaxUint64, got %d", got)
+	}
+}
