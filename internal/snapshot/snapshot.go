@@ -82,22 +82,11 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	}
 	defer readTx.Rollback()
 
-	rows, err := readTx.QueryContext(ctx, `SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid`)
+	tableDDLs, otherDDLs, err := loadSchemaDDLs(ctx, readTx)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var ddl string
-		if err := rows.Scan(&ddl); err != nil {
-			return err
-		}
-		if _, err := dest.ExecContext(ctx, ddl); err != nil {
-			return fmt.Errorf("exec ddl: %w", err)
-		}
-	}
-	if err := rows.Err(); err != nil {
+	if err := execDDLs(ctx, dest, tableDDLs); err != nil {
 		return err
 	}
 
@@ -109,6 +98,49 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 	for _, table := range tables {
 		if err := copyTable(ctx, readTx, dest, table); err != nil {
 			return fmt.Errorf("copy table %s: %w", table, err)
+		}
+	}
+	if err := execDDLs(ctx, dest, otherDDLs); err != nil {
+		return err
+	}
+	return nil
+}
+
+type schemaDDL struct {
+	objectType string
+	sql        string
+}
+
+func loadSchemaDDLs(ctx context.Context, db queryContexter) ([]string, []string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT type, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var tableDDLs []string
+	var otherDDLs []string
+	for rows.Next() {
+		var ddl schemaDDL
+		if err := rows.Scan(&ddl.objectType, &ddl.sql); err != nil {
+			return nil, nil, err
+		}
+		if ddl.objectType == "table" {
+			tableDDLs = append(tableDDLs, ddl.sql)
+			continue
+		}
+		otherDDLs = append(otherDDLs, ddl.sql)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return tableDDLs, otherDDLs, nil
+}
+
+func execDDLs(ctx context.Context, db *sql.DB, ddls []string) error {
+	for _, ddl := range ddls {
+		if _, err := db.ExecContext(ctx, ddl); err != nil {
+			return fmt.Errorf("exec ddl: %w", err)
 		}
 	}
 	return nil

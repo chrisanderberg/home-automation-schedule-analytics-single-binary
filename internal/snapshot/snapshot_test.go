@@ -27,6 +27,9 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX idx_snapshot_controls_type ON controls(control_type)`); err != nil {
+		t.Fatalf("create index: %v", err)
+	}
 
 	dir := t.TempDir()
 	snapDir := filepath.Join(dir, "snapshots")
@@ -55,6 +58,11 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 	}
 	if control.NumStates != 2 {
 		t.Fatalf("expected 2 states, got %d", control.NumStates)
+	}
+
+	var indexName string
+	if err := snapDB.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_snapshot_controls_type'`).Scan(&indexName); err != nil {
+		t.Fatalf("expected exported index: %v", err)
 	}
 }
 
