@@ -120,6 +120,17 @@ func ListAggregateKeys(ctx context.Context, db *sql.DB, controlID string) ([]Agg
 	return keys, rows.Err()
 }
 
+func validateAggregateBlobSize(key AggregateKey, numStates int, blobBytes []byte) error {
+	expectedLen := numStates * numStates * domain.GroupSize * 8
+	if len(blobBytes) != expectedLen {
+		return fmt.Errorf(
+			"aggregate blob size mismatch for control_id=%q model_id=%q quarter_index=%d: got %d bytes, expected %d",
+			key.ControlID, key.ModelID, key.QuarterIndex, len(blobBytes), expectedLen,
+		)
+	}
+	return nil
+}
+
 func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numStates int) ([]byte, error) {
 	row := db.QueryRowContext(
 		ctx,
@@ -129,6 +140,9 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 	var blobBytes []byte
 	switch err := row.Scan(&blobBytes); err {
 	case nil:
+		if err := validateAggregateBlobSize(key, numStates, blobBytes); err != nil {
+			return nil, err
+		}
 		return blobBytes, nil
 	case sql.ErrNoRows:
 		b, err := domain.NewBlob(numStates)
@@ -152,6 +166,9 @@ func GetOrCreateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, num
 			key.ControlID, key.ModelID, key.QuarterIndex,
 		)
 		if err := row.Scan(&blobBytes); err != nil {
+			return nil, err
+		}
+		if err := validateAggregateBlobSize(key, numStates, blobBytes); err != nil {
 			return nil, err
 		}
 		return blobBytes, nil
@@ -228,12 +245,8 @@ func updateAggregateWithQueryExec(
 	var blobBytes []byte
 	switch err := row.Scan(&blobBytes); err {
 	case nil:
-		expectedLen := numStates * numStates * domain.GroupSize * 8
-		if len(blobBytes) != expectedLen {
-			return fmt.Errorf(
-				"aggregate blob size mismatch for control_id=%q model_id=%q quarter_index=%d: got %d bytes, expected %d",
-				key.ControlID, key.ModelID, key.QuarterIndex, len(blobBytes), expectedLen,
-			)
+		if err := validateAggregateBlobSize(key, numStates, blobBytes); err != nil {
+			return err
 		}
 	case sql.ErrNoRows:
 		b, err := domain.NewBlob(numStates)

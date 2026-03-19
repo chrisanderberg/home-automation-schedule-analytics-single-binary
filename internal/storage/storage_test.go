@@ -178,6 +178,24 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	}
 }
 
+func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO aggregates (control_id, model_id, quarter_index, blob) VALUES (?, ?, ?, ?)`,
+		"bad", "m", 0, []byte{0x01, 0x02},
+	)
+	if err != nil {
+		t.Fatalf("raw insert: %v", err)
+	}
+
+	_, err = GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "bad", ModelID: "m", QuarterIndex: 0}, 2)
+	if err == nil || !strings.Contains(err.Error(), "aggregate blob size mismatch") {
+		t.Fatalf("expected blob size mismatch error, got %v", err)
+	}
+}
+
 func TestListControls(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
