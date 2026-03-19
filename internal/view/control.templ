@@ -1,6 +1,7 @@
 package view
 
 import "fmt"
+import "net/url"
 
 type QuarterOption struct {
 	QuarterIndex int
@@ -43,7 +44,7 @@ templ ControlPage(data ControlPageData) {
 					if q.Selected {
 						<button
 							class="quarter-btn selected"
-							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", data.ControlID, q.QuarterIndex) }
+							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", url.QueryEscape(data.ControlID), q.QuarterIndex) }
 							hx-target="#heatmap-container"
 							hx-swap="innerHTML"
 						>
@@ -52,7 +53,7 @@ templ ControlPage(data ControlPageData) {
 					} else {
 						<button
 							class="quarter-btn"
-							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", data.ControlID, q.QuarterIndex) }
+							hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", url.QueryEscape(data.ControlID), q.QuarterIndex) }
 							hx-target="#heatmap-container"
 							hx-swap="innerHTML"
 						>

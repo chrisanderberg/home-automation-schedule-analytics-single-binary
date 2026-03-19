@@ -40,6 +40,26 @@ func TestHomePageRendersControls(t *testing.T) {
 	}
 }
 
+func TestHomePageEscapesControlLinks(t *testing.T) {
+	db := openTestDB(t)
+	if err := storage.UpsertControl(context.Background(), db, storage.Control{
+		ControlID: "mode/scene", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	HandleHomePage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `/controls/mode%2Fscene`) {
+		t.Fatalf("expected escaped control link, got body %q", w.Body.String())
+	}
+}
+
 func TestHomePageEmptyState(t *testing.T) {
 	db := openTestDB(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -115,6 +135,35 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="quarter-btn selected"`) || !strings.Contains(body, `hx-get="/partials/heatmap?controlId=mode&amp;quarter=12"`) {
 		t.Fatalf("expected latest quarter to be selected")
+	}
+}
+
+func TestControlPageEscapesQuarterRequests(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode/scene", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode/scene",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode%2Fscene", nil)
+	req.SetPathValue("controlID", "mode/scene")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `hx-get="/partials/heatmap?controlId=mode%2Fscene&amp;quarter=12"`) {
+		t.Fatalf("expected escaped quarter request, got body %q", w.Body.String())
 	}
 }
 
