@@ -41,6 +41,14 @@ func postJSON(handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
 	return w
 }
 
+func postRaw(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	return w
+}
+
 func TestHealthReturns200(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	w := httptest.NewRecorder()
@@ -72,6 +80,14 @@ func TestControlsRejectsMissingFields(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlType": "discrete", "numStates": 3}
 	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestControlsRejectEmptyBody(t *testing.T) {
+	db := openTestDB(t)
+	w := postRaw(HandleControls(db), "")
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}

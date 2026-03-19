@@ -19,7 +19,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 func decodeStrictJSON(r io.Reader, v any) error {
 	decoder := json.NewDecoder(r)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(v); err != nil && err != io.EOF {
+	if err := decoder.Decode(v); err != nil {
 		return err
 	}
 	return nil
