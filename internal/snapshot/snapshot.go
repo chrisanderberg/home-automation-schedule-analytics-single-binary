@@ -61,7 +61,7 @@ func snapshotFilename() (string, error) {
 }
 
 func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
-	dest, err := sql.Open("sqlite", destPath+"?_pragma=foreign_keys(1)")
+	dest, err := sql.Open("sqlite", destPath)
 	if err != nil {
 		return err
 	}
@@ -131,9 +131,6 @@ func tableNames(ctx context.Context, db queryContexter) ([]string, error) {
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		if isInternalSQLiteName(name) {
-			continue
-		}
 		names = append(names, name)
 	}
 	return names, rows.Err()
@@ -185,10 +182,24 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 		return err
 	}
 	defer func() {
+		if stmt != nil {
+			_ = stmt.Close()
+		}
 		if tx != nil {
 			_ = tx.Rollback()
 		}
 	}()
+
+	closeStmt := func() error {
+		if stmt == nil {
+			return nil
+		}
+		err := stmt.Close()
+		if err == nil {
+			stmt = nil
+		}
+		return err
+	}
 
 	rowCount := 0
 	for rows.Next() {
@@ -198,21 +209,29 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 			ptrs[i] = &values[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
+			if closeErr := closeStmt(); closeErr != nil {
+				_ = tx.Rollback()
+				return closeErr
+			}
 			return err
 		}
 		if _, err := stmt.ExecContext(ctx, values...); err != nil {
+			if closeErr := closeStmt(); closeErr != nil {
+				_ = tx.Rollback()
+				return closeErr
+			}
 			return err
 		}
 		rowCount++
 		if rowCount%500 == 0 {
-			if err := stmt.Close(); err != nil {
+			if err := closeStmt(); err != nil {
 				_ = tx.Rollback()
 				return err
 			}
 			if err := tx.Commit(); err != nil {
-				_ = tx.Rollback()
 				return err
 			}
+			tx = nil
 			tx, stmt, err = startBatch()
 			if err != nil {
 				return err
@@ -220,14 +239,17 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 		}
 	}
 	if err := rows.Err(); err != nil {
+		if closeErr := closeStmt(); closeErr != nil {
+			_ = tx.Rollback()
+			return closeErr
+		}
 		return err
 	}
-	if err := stmt.Close(); err != nil {
+	if err := closeStmt(); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	tx = nil
@@ -275,5 +297,5 @@ func ListSnapshots(snapshotDir string) ([]SnapshotInfo, error) {
 }
 
 func isInternalSQLiteName(name string) bool {
-	return name == "sqlite_sequence" || strings.HasPrefix(name, "sqlite_")
+	return strings.HasPrefix(name, "sqlite_")
 }
