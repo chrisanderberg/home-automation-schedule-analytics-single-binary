@@ -2,7 +2,9 @@ package snapshot
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -19,13 +21,43 @@ func Export(ctx context.Context, db *sql.DB, snapshotDir string) (string, error)
 		return "", fmt.Errorf("create snapshot dir: %w", err)
 	}
 
-	filename := fmt.Sprintf("snapshot-%s.sqlite", time.Now().UTC().Format("20060102-150405"))
+	filename, err := snapshotFilename()
+	if err != nil {
+		return "", fmt.Errorf("generate snapshot filename: %w", err)
+	}
 	destPath := filepath.Join(snapshotDir, filename)
+	tempFile, err := os.CreateTemp(snapshotDir, "."+filename+".tmp-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp snapshot file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return "", fmt.Errorf("close temp snapshot file: %w", err)
+	}
+	defer func() {
+		_ = os.Remove(tempPath)
+	}()
 
-	if err := copySQLiteDB(ctx, db, destPath); err != nil {
+	if err := copySQLiteDB(ctx, db, tempPath); err != nil {
 		return "", fmt.Errorf("export snapshot: %w", err)
 	}
+	if err := os.Rename(tempPath, destPath); err != nil {
+		return "", fmt.Errorf("move snapshot into place: %w", err)
+	}
 	return destPath, nil
+}
+
+func snapshotFilename() (string, error) {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		"snapshot-%s-%s.sqlite",
+		time.Now().UTC().Format("20060102-150405.000000000"),
+		hex.EncodeToString(suffix[:]),
+	), nil
 }
 
 func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {

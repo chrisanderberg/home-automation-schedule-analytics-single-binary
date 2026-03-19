@@ -72,38 +72,31 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 }
 
 func HandleHolding(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var input ingest.HoldingInput
-		if err := decodeStrictJSON(r.Body, &input); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if err := ingest.IngestHolding(r.Context(), db, cfg, input); err != nil {
-			if ingest.IsValidationError(err) {
-				writeError(w, http.StatusBadRequest, "invalid input")
-				return
-			}
-			log.Printf("handleHolding ingest failed: %v", err)
-			writeError(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
-	}
+	return makeIngestHandler(db, cfg, "handleHolding", ingest.IngestHolding)
 }
 
 func HandleTransitions(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
+	return makeIngestHandler(db, cfg, "handleTransitions", ingest.IngestTransition)
+}
+
+func makeIngestHandler[T any](
+	db *sql.DB,
+	cfg ingest.Config,
+	logLabel string,
+	ingestFn func(context.Context, *sql.DB, ingest.Config, T) error,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var input ingest.TransitionInput
+		var input T
 		if err := decodeStrictJSON(r.Body, &input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if err := ingest.IngestTransition(r.Context(), db, cfg, input); err != nil {
+		if err := ingestFn(r.Context(), db, cfg, input); err != nil {
 			if ingest.IsValidationError(err) {
 				writeError(w, http.StatusBadRequest, "invalid input")
 				return
 			}
-			log.Printf("handleTransitions ingest failed: %v", err)
+			log.Printf("%s ingest failed: %v", logLabel, err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
