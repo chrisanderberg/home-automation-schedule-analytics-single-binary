@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain"
@@ -123,7 +124,11 @@ func applyHoldingClockSpans(b *domain.Blob, numStates int, state int, clock int,
 		if s.Millis < 0 {
 			return fmt.Errorf("%w: negative holding millis for bucket %d", ErrInvalidInput, s.Bucket)
 		}
-		if err := b.SetU64(idx, v+uint64(s.Millis)); err != nil {
+		add := uint64(s.Millis)
+		if add > math.MaxUint64-v {
+			add = math.MaxUint64 - v
+		}
+		if err := b.SetU64(idx, v+add); err != nil {
 			return err
 		}
 	}

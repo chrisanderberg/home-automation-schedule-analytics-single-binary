@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"database/sql"
+	"math"
 	"testing"
 	"time"
 
@@ -190,5 +191,33 @@ func TestIngestValidationErrors(t *testing.T) {
 	err = IngestTransition(ctx, db, cfg, TransitionInput{ControlID: "c", ModelID: "m", FromState: 0, ToState: 0, TimestampMs: 1000})
 	if !IsValidationError(err) {
 		t.Fatalf("expected validation error for self-transition, got %v", err)
+	}
+}
+
+func TestApplyHoldingClockSpansSaturatesAtMaxUint64(t *testing.T) {
+	b, err := domain.NewBlob(2)
+	if err != nil {
+		t.Fatalf("new blob: %v", err)
+	}
+
+	idx, err := domain.HoldIndex(1, domain.ClockUTC, 0, 2)
+	if err != nil {
+		t.Fatalf("hold index: %v", err)
+	}
+	if err := b.SetU64(idx, math.MaxUint64-10); err != nil {
+		t.Fatalf("seed value: %v", err)
+	}
+
+	err = applyHoldingClockSpans(b, 2, 1, domain.ClockUTC, []domain.BucketSpan{{Bucket: 0, Millis: 25}})
+	if err != nil {
+		t.Fatalf("apply holding spans: %v", err)
+	}
+
+	got, err := b.GetU64(idx)
+	if err != nil {
+		t.Fatalf("get value: %v", err)
+	}
+	if got != math.MaxUint64 {
+		t.Fatalf("expected saturation at MaxUint64, got %d", got)
 	}
 }
