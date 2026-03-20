@@ -1,5 +1,14 @@
 # DECISIONS.md
 
+## 2026-03-19 — Local-time bucket splits follow exact DST fold semantics
+- Local-time interval splitting now finds the earliest UTC instant that changes
+  the local bucket, rather than forcing a synthetic forward-only boundary.
+- During DST fall-back, bucket indices are allowed to revisit the repeated
+  local hour (for example `01:55` to `01:00`) because that is the correct local
+  clock semantics.
+- Rationale: local bucketing is defined by actual local wall time, not by a
+  monotonic approximation in UTC.
+
 ## 2026-03-18 — Module path
 - Module path set to `home-automation-schedule-analytics-single-bin`.
 - Matches directory name. May change if a canonical VCS import path is desired.

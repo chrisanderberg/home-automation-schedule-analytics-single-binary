@@ -100,3 +100,47 @@ func TestSplitIntervalLocalDSTInvariants(t *testing.T) {
 		t.Fatalf("duration mismatch: got %d want %d", sum, expected)
 	}
 }
+
+// TestSplitIntervalLocalDSTFallBack revisits the repeated local hour instead of forcing monotonic bucket indices.
+func TestSplitIntervalLocalDSTFallBack(t *testing.T) {
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+
+	start := time.Date(2020, 11, 1, 1, 55, 0, 0, loc)
+	end := start.Add(15 * time.Minute)
+
+	spans, err := SplitIntervalLocal(start.UnixMilli(), end.UnixMilli(), loc)
+	if err != nil {
+		t.Fatalf("split interval local: %v", err)
+	}
+	if len(spans) != 3 {
+		t.Fatalf("expected 3 spans, got %d", len(spans))
+	}
+
+	wantBuckets := []int{
+		6*288 + 23,
+		6*288 + 12,
+		6*288 + 13,
+	}
+	for i, want := range wantBuckets {
+		if spans[i].Bucket != want {
+			t.Fatalf("span %d bucket mismatch: got %d want %d", i, spans[i].Bucket, want)
+		}
+	}
+
+	for i, span := range spans {
+		if span.Millis != 5*60*1000 && i != len(spans)-1 {
+			t.Fatalf("span %d duration mismatch: got %d want %d", i, span.Millis, 5*60*1000)
+		}
+	}
+
+	var sum int64
+	for _, span := range spans {
+		sum += span.Millis
+	}
+	if sum != end.Sub(start).Milliseconds() {
+		t.Fatalf("duration mismatch: got %d want %d", sum, end.Sub(start).Milliseconds())
+	}
+}

@@ -94,26 +94,40 @@ func nextBoundaryUTC(timestampMs int64) int64 {
 	return boundary.UnixMilli()
 }
 
-// nextBoundaryLocal returns the next local five-minute boundary after a timestamp.
+// nextBoundaryLocal returns the earliest instant after a timestamp that lands in
+// a different local-time bucket. This preserves exact local bucket semantics
+// across DST folds, where the next bucket can revisit an earlier wall-clock hour.
 func nextBoundaryLocal(timestampMs int64, loc *time.Location) int64 {
-	t := time.UnixMilli(timestampMs).In(loc)
-	minute := (t.Minute()/5 + 1) * 5
-	hour := t.Hour()
-	day := t.Day()
-	month := t.Month()
-	year := t.Year()
-	if minute >= 60 {
-		minute = 0
-		hour++
+	bucket, err := BucketAtLocal(timestampMs, loc)
+	if err != nil {
+		return timestampMs
 	}
-	boundary := time.Date(year, month, day, hour, minute, 0, 0, loc)
-	boundaryMs := boundary.UnixMilli()
-	if boundaryMs <= timestampMs {
-		// DST folds and gaps can cause the reconstructed local boundary to map
-		// backward or sideways in UTC, so fall back to one bucket width forward.
-		return timestampMs + int64(5*60*1000)
+
+	low := time.UnixMilli(timestampMs)
+	high := low.Add(time.Minute)
+	for i := 0; i < 10; i++ {
+		nextBucket, err := BucketAtLocal(high.UnixMilli(), loc)
+		if err != nil {
+			return timestampMs
+		}
+		if nextBucket != bucket {
+			for high.Sub(low) > time.Millisecond {
+				mid := low.Add(high.Sub(low) / 2)
+				midBucket, err := BucketAtLocal(mid.UnixMilli(), loc)
+				if err != nil {
+					return timestampMs
+				}
+				if midBucket == bucket {
+					low = mid
+					continue
+				}
+				high = mid
+			}
+			return high.UnixMilli()
+		}
+		high = high.Add(time.Minute)
 	}
-	return boundaryMs
+	return timestampMs + int64(5*60*1000)
 }
 
 // bucketFromTime converts a wall-clock time into the repository's Monday-based weekly bucket index.
