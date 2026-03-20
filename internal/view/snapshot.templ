@@ -1,0 +1,62 @@
+package view
+
+import "fmt"
+
+type SnapshotEntry struct {
+	Name    string
+	Size    string
+	ModTime string
+}
+
+// displaySnapshots limits the rendered snapshot list to the newest entries shown in the UI.
+func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
+	if len(snapshots) > 50 {
+		return snapshots[:50]
+	}
+	return snapshots
+}
+
+// SnapshotPage renders the snapshot listing and export action.
+templ SnapshotPage(snapshots []SnapshotEntry) {
+	@Layout("Snapshots") {
+		<h1>Snapshots</h1>
+		<div class="snapshot-actions">
+			<button
+				class="btn"
+				hx-post="/api/v1/snapshots"
+				hx-on::after-request="setTimeout(function(){ location.reload(); }, 500)"
+			>
+				Export Snapshot
+			</button>
+		</div>
+		<div id="snapshot-list">
+			if len(snapshots) == 0 {
+				<p class="empty">No snapshots yet.</p>
+			} else {
+				<table class="snapshot-table">
+					<thead>
+						<tr>
+							<th>File</th>
+							<th>Size</th>
+							<th>Created</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, s := range displaySnapshots(snapshots) {
+							<tr>
+								<td>{ s.Name }</td>
+								<td>{ s.Size }</td>
+								<td>{ s.ModTime }</td>
+							</tr>
+						}
+						if len(snapshots) > 50 {
+							<tr>
+								<td colspan="3">{ fmt.Sprintf("... and %d more", len(snapshots)-50) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+	}
+}
