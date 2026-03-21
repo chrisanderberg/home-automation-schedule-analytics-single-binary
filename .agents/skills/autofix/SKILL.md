@@ -70,7 +70,7 @@ gh pr list --head $(git branch --show-current) --state open --json number,title
 
 ### Step 3: Fetch Unresolved CodeRabbit Threads
 
-Fetch PR review threads (see [github.md § 2](./github.md#2-fetch-unresolved-threads)):
+Fetch PR review threads with cursor pagination until `hasNextPage` is false (see [github.md § 2](./github.md#2-fetch-unresolved-threads)):
 - Threads: `gh api graphql ... pullRequest.reviewThreads ...` (see [github.md § 2](./github.md#2-fetch-unresolved-threads))
 
 Filter to:
@@ -208,14 +208,14 @@ the deferred/skipped totals remain unambiguous.
 
 ```bash
 if [ -n "${COMMIT_SHA}" ]; then
+  MODIFIED_FILES_MARKDOWN="$(printf '%s\n' "${CHANGED_FILES[@]}" | sed 's#^#- `#; s#$#`#')"
   gh pr comment "${PR_NUMBER}" --body "$(cat <<EOF
 ## Fixes Applied Successfully
 
 Fixed ${FILE_COUNT} file(s) based on ${ISSUE_COUNT} unresolved review comment(s).
 
 **Files modified:**
-- `path/to/file-a.ts`
-- `path/to/file-b.ts`
+${MODIFIED_FILES_MARKDOWN}
 
 **Commit:** `${COMMIT_SHA}`
 

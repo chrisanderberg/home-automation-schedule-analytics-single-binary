@@ -44,10 +44,12 @@ func (l Layout) transitionWordCount() int {
 }
 
 func (l Layout) WordCount() int {
+	l.mustValidate()
 	return l.holdWordCount() + l.transitionWordCount()
 }
 
 func (l Layout) ByteSize() int {
+	l.mustValidate()
 	return l.WordCount() * 8
 }
 

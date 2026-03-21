@@ -117,6 +117,7 @@ func (s *Store) Init(ctx context.Context) error {
 func sqliteDSN(path string) string {
 	params := url.Values{
 		"_pragma": []string{"foreign_keys(ON)"},
+		"_txlock": []string{"immediate"},
 	}
 	separator := "?"
 	if strings.Contains(path, "?") {
@@ -295,7 +296,8 @@ func (s *Store) ApplyAggregateDelta(ctx context.Context, controlID string, quart
 	// runs a single transaction to load any existing aggregates row, require
 	// existingStates == numStates, and either INSERT the delta as-is or decode it
 	// with blob.FromBytes, acc.Merge it into the stored accumulator, and UPDATE
-	// aggregates atomically so the load/merge/write sequence cannot interleave.
+	// aggregates atomically. sqliteDSN configures _txlock=immediate so the write
+	// transaction acquires its lock at BEGIN time and serializes this sequence.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

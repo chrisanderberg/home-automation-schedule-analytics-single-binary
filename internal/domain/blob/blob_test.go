@@ -276,6 +276,41 @@ func TestNewLayoutRejectsTooManyStates(t *testing.T) {
 	}
 }
 
+func TestLayoutSizeHelpersPanicOnInvalidLayout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		fn   func(blob.Layout)
+	}{
+		{
+			name: "WordCount",
+			fn: func(layout blob.Layout) {
+				_ = layout.WordCount()
+			},
+		},
+		{
+			name: "ByteSize",
+			fn: func(layout blob.Layout) {
+				_ = layout.ByteSize()
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("%s expected panic for invalid layout", tc.name)
+				}
+			}()
+			tc.fn(blob.Layout{})
+		})
+	}
+}
+
 func TestTransitionGroupIndexPanicsOnSelfTransition(t *testing.T) {
 	t.Parallel()
 
