@@ -1,6 +1,13 @@
 data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
 data/snapshots/*.sqlite
+data/snapshots/*.sqlite-shm
+data/snapshots/*.sqlite-wal
 testdata/*.sqlite
+testdata/*.sqlite-shm
+testdata/*.sqlite-wal
 *_templ.go
-home-automation-schedule-analytics-single-bin
+home-automation-schedule-analytics
 .env
+.DS_Store

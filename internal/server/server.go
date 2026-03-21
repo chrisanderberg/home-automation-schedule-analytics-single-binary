@@ -1,21 +1,359 @@
 package server
 
 import (
+	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/a-h/templ"
 
 	"home-automation-schedule-analytics-single-bin/internal/config"
+	"home-automation-schedule-analytics-single-bin/internal/domain/blob"
+	"home-automation-schedule-analytics-single-bin/internal/domain/bucketing"
+	"home-automation-schedule-analytics-single-bin/internal/domain/control"
+	"home-automation-schedule-analytics-single-bin/internal/ingest"
+	"home-automation-schedule-analytics-single-bin/internal/snapshot"
+	"home-automation-schedule-analytics-single-bin/internal/storage"
+	"home-automation-schedule-analytics-single-bin/internal/views"
 )
 
-func New(db *sql.DB, cfg config.Config) http.Handler {
-	mux := http.NewServeMux()
+//go:embed static/*
+var staticFS embed.FS
 
-	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+type Handler struct {
+	store    *storage.Store
+	ingest   *ingest.Service
+	exporter *snapshot.Exporter
+}
+
+func New(db *sql.DB, cfg config.Config) (http.Handler, error) {
+	var store *storage.Store
+	if db != nil {
+		store = storage.NewFromDB(db)
+		if err := store.Init(rContext()); err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		store, err = storage.Open(cfg.DBPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	engine, err := bucketing.New(bucketing.Config{
+		Location:  cfg.Location,
+		Latitude:  cfg.Latitude,
+		Longitude: cfg.Longitude,
 	})
+	if err != nil {
+		return nil, err
+	}
+	h := &Handler{
+		store:    store,
+		ingest:   ingest.NewService(store, engine),
+		exporter: snapshot.NewExporter(store, cfg.DBPath),
+	}
+	return h.routes(), nil
+}
 
+func (h *Handler) routes() http.Handler {
+	mux := http.NewServeMux()
+	staticRoot, _ := fs.Sub(staticFS, "static")
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticRoot))))
+	mux.HandleFunc("GET /api/v1/health", h.handleHealth)
+	mux.HandleFunc("POST /api/v1/controls", h.handleCreateControl)
+	mux.HandleFunc("POST /api/v1/holding-intervals", h.handleHoldingInterval)
+	mux.HandleFunc("POST /api/v1/transitions", h.handleTransition)
+	mux.HandleFunc("POST /api/v1/snapshots", h.handleSnapshotAPI)
+	mux.HandleFunc("GET /", h.handleHome)
+	mux.HandleFunc("GET /controls/{controlID}", h.handleControlPage)
+	mux.HandleFunc("GET /controls/{controlID}/heatmap", h.handleHeatmapPanel)
+	mux.HandleFunc("GET /snapshots", h.handleSnapshotsPage)
+	mux.HandleFunc("POST /snapshots", h.handleSnapshotsCreate)
 	return mux
+}
+
+func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleCreateControl(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ControlID   string `json:"controlId"`
+		ControlType string `json:"controlType"`
+		NumStates   int    `json:"numStates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	item := control.Control{
+		ID:        req.ControlID,
+		Type:      control.Type(req.ControlType),
+		NumStates: req.NumStates,
+	}
+	if err := h.ingest.RegisterControl(r.Context(), item); err != nil {
+		writeValidation(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (h *Handler) handleHoldingInterval(w http.ResponseWriter, r *http.Request) {
+	var req ingest.HoldingInterval
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	if err := h.ingest.IngestHolding(r.Context(), req); err != nil {
+		writeValidation(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+func (h *Handler) handleTransition(w http.ResponseWriter, r *http.Request) {
+	var req ingest.Transition
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	if err := h.ingest.IngestTransition(r.Context(), req); err != nil {
+		writeValidation(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+func (h *Handler) handleSnapshotAPI(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	record, err := h.exporter.Export(r.Context(), req.Name)
+	if err != nil {
+		writeValidation(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, record)
+}
+
+func (h *Handler) handleHome(w http.ResponseWriter, r *http.Request) {
+	items, err := h.store.ListControls(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	renderComponent(w, http.StatusOK, views.HomePage(views.HomePageData{Controls: items}))
+}
+
+func (h *Handler) handleControlPage(w http.ResponseWriter, r *http.Request) {
+	controlID := r.PathValue("controlID")
+	pageData, err := h.controlPageData(r, controlID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	renderComponent(w, http.StatusOK, views.ControlPage(pageData))
+}
+
+func (h *Handler) handleHeatmapPanel(w http.ResponseWriter, r *http.Request) {
+	controlID := r.PathValue("controlID")
+	pageData, err := h.controlPageData(r, controlID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	renderComponent(w, http.StatusOK, views.HeatmapPanel(pageData.Heatmap))
+}
+
+func (h *Handler) handleSnapshotsPage(w http.ResponseWriter, r *http.Request) {
+	items, err := h.store.ListSnapshots(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	renderComponent(w, http.StatusOK, views.SnapshotsPage(views.SnapshotsPageData{Snapshots: items}))
+}
+
+func (h *Handler) handleSnapshotsCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := h.exporter.Export(r.Context(), r.FormValue("name")); err != nil {
+		writeValidation(w, err)
+		return
+	}
+	items, err := h.store.ListSnapshots(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		renderComponent(w, http.StatusOK, views.SnapshotList(items))
+		return
+	}
+	http.Redirect(w, r, "/snapshots", http.StatusSeeOther)
+}
+
+func (h *Handler) controlPageData(r *http.Request, controlID string) (views.ControlPageData, error) {
+	c, err := h.store.GetControl(r.Context(), controlID)
+	if err != nil {
+		return views.ControlPageData{}, err
+	}
+	quarters, err := h.store.ListQuarterIndices(r.Context(), controlID)
+	if err != nil {
+		return views.ControlPageData{}, err
+	}
+	heatmap := views.HeatmapData{
+		ControlID:      controlID,
+		QuarterOptions: quarters,
+		Clock:          defaultString(r.URL.Query().Get("clock"), "utc"),
+		Metric:         defaultString(r.URL.Query().Get("metric"), "holding"),
+	}
+	if len(quarters) == 0 {
+		return views.ControlPageData{Control: c, Heatmap: heatmap}, nil
+	}
+	selectedQuarter, err := parseQuarter(defaultString(r.URL.Query().Get("quarter"), strconv.Itoa(quarters[len(quarters)-1])))
+	if err != nil {
+		selectedQuarter = quarters[len(quarters)-1]
+	}
+	heatmap.QuarterIndex = selectedQuarter
+
+	record, err := h.store.GetAggregate(r.Context(), controlID, selectedQuarter)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return views.ControlPageData{Control: c, Heatmap: heatmap}, nil
+		}
+		return views.ControlPageData{}, err
+	}
+	values, err := buildHeatmapValues(record, heatmap.Clock, heatmap.Metric)
+	if err != nil {
+		return views.ControlPageData{}, err
+	}
+	heatmap.Values = values
+	heatmap.HasData = true
+	return views.ControlPageData{Control: c, Heatmap: heatmap}, nil
+}
+
+func buildHeatmapValues(record storage.AggregateRecord, clockName, metric string) ([]uint64, error) {
+	acc, err := blob.FromBytes(record.NumStates, record.Data)
+	if err != nil {
+		return nil, err
+	}
+	clockIndex, err := parseClock(clockName)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]uint64, blob.BucketsPerWeek)
+	switch metric {
+	case "holding":
+		for bucket := 0; bucket < blob.BucketsPerWeek; bucket++ {
+			var total uint64
+			for state := 0; state < record.NumStates; state++ {
+				value, err := acc.Holding(state, clockIndex, bucket)
+				if err != nil {
+					return nil, err
+				}
+				total += value
+			}
+			values[bucket] = total
+		}
+	case "transition":
+		for bucket := 0; bucket < blob.BucketsPerWeek; bucket++ {
+			var total uint64
+			for from := 0; from < record.NumStates; from++ {
+				for to := 0; to < record.NumStates; to++ {
+					if from == to {
+						continue
+					}
+					value, err := acc.Transition(from, to, clockIndex, bucket)
+					if err != nil {
+						return nil, err
+					}
+					total += value
+				}
+			}
+			values[bucket] = total
+		}
+	default:
+		return nil, fmt.Errorf("unknown metric %q", metric)
+	}
+	return values, nil
+}
+
+func parseClock(name string) (int, error) {
+	switch name {
+	case "utc":
+		return int(bucketing.ClockUTC), nil
+	case "local":
+		return int(bucketing.ClockLocal), nil
+	case "mean_solar":
+		return int(bucketing.ClockMeanSolar), nil
+	case "apparent_solar":
+		return int(bucketing.ClockApparentSolar), nil
+	case "unequal_hours":
+		return int(bucketing.ClockUnequalHours), nil
+	default:
+		return 0, fmt.Errorf("unknown clock %q", name)
+	}
+}
+
+func parseQuarter(raw string) (int, error) {
+	return strconv.Atoi(raw)
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeValidation(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if !errors.Is(err, ingest.ErrValidation) && !errors.Is(err, snapshot.ErrValidation) {
+		status = http.StatusInternalServerError
+	}
+	writeError(w, status, err)
+}
+
+func writeError(w http.ResponseWriter, status int, err error) {
+	writeJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+func renderComponent(w http.ResponseWriter, status int, component templ.Component) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_ = component.Render(rContext(), w)
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func rContext() context.Context {
+	return context.Background()
 }

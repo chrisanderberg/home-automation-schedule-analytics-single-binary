@@ -13,6 +13,7 @@ import (
 
 	"home-automation-schedule-analytics-single-bin/internal/config"
 	"home-automation-schedule-analytics-single-bin/internal/server"
+	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
 func main() {
@@ -28,7 +29,16 @@ func run() error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	handler := server.New(nil, cfg)
+	store, err := storage.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("storage: %w", err)
+	}
+	defer store.Close()
+
+	handler, err := server.New(store.DB(), cfg)
+	if err != nil {
+		return fmt.Errorf("server: %w", err)
+	}
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

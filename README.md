@@ -26,6 +26,9 @@ HAA_LATITUDE=59.33 HAA_LONGITUDE=18.07 ./home-automation-schedule-analytics
 | `HAA_DB_PATH` | No | `data/data.sqlite` | SQLite database path |
 | `HAA_PORT` | No | `8080` | HTTP listen port |
 
+Snapshot exports are written under a `snapshots/` directory adjacent to the
+configured database file.
+
 ## API endpoints
 
 | Method | Path | Description |
@@ -41,8 +44,59 @@ HAA_LATITUDE=59.33 HAA_LONGITUDE=18.07 ./home-automation-schedule-analytics
 | Path | Description |
 |---|---|
 | `/` | Home — list of controls with stats |
-| `/controls/{controlID}` | Control detail with heatmap |
+| `/controls/{controlID}` | Control detail with heatmap filters for quarter, clock, and metric |
 | `/snapshots` | Snapshot management |
+
+## Request payloads
+
+Register or update a control:
+
+```json
+{
+  "controlId": "kitchen-light",
+  "controlType": "discrete",
+  "numStates": 3
+}
+```
+
+Ingest a holding interval:
+
+```json
+{
+  "controlId": "kitchen-light",
+  "state": 2,
+  "startTimeMs": 1774017600000,
+  "endTimeMs": 1774017900000
+}
+```
+
+Ingest a transition:
+
+```json
+{
+  "controlId": "kitchen-light",
+  "fromState": 0,
+  "toState": 1,
+  "timestampMs": 1774018200000
+}
+```
+
+Create a snapshot:
+
+```json
+{
+  "name": "q1-export"
+}
+```
+
+## Notes
+
+- Slider controls must be registered with `numStates=6`.
+- The UI uses server-rendered HTML with TEMPL components, htmx partial updates,
+  and lightweight canvas rendering for the heatmap.
+- `htmx` is vendored under `internal/server/static/vendor/` and embedded into
+  the single binary at build time.
+- Solar clocks use an in-process approximation documented in `DECISIONS.md`.
 
 ## Development
 
