@@ -143,9 +143,12 @@ func TestExporterAvoidsFilenameCollisions(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := nextAvailableSnapshotPath(dir, "report", time.Date(2026, time.March, 20, 15, 30, 0, 0, time.UTC))
+	got, reserved, err := reserveNextSnapshotPath(dir, "report", time.Date(2026, time.March, 20, 15, 30, 0, 0, time.UTC))
 	if err != nil {
-		t.Fatalf("nextAvailableSnapshotPath() error = %v", err)
+		t.Fatalf("reserveNextSnapshotPath() error = %v", err)
+	}
+	if err := reserved.Close(); err != nil {
+		t.Fatalf("reserved.Close() error = %v", err)
 	}
 	if got == firstPath {
 		t.Fatalf("collision path reused: %s", got)

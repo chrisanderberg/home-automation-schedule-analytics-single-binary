@@ -28,16 +28,19 @@ import (
 var staticFS embed.FS
 
 type Handler struct {
-	store    *storage.Store
-	ingest   *ingest.Service
-	exporter *snapshot.Exporter
+	store     *storage.Store
+	ingest    *ingest.Service
+	exporter  *snapshot.Exporter
+	ownsStore bool
+	router    http.Handler
 }
 
-func New(db *sql.DB, cfg config.Config) (http.Handler, error) {
+func New(db *sql.DB, cfg config.Config) (*Handler, error) {
 	var store *storage.Store
+	ownsStore := false
 	if db != nil {
 		store = storage.NewFromDB(db)
-		if err := store.Init(rContext()); err != nil {
+		if err := store.Init(context.Background()); err != nil {
 			return nil, err
 		}
 	} else {
@@ -46,6 +49,7 @@ func New(db *sql.DB, cfg config.Config) (http.Handler, error) {
 		if err != nil {
 			return nil, err
 		}
+		ownsStore = true
 	}
 
 	engine, err := bucketing.New(bucketing.Config{
@@ -57,16 +61,38 @@ func New(db *sql.DB, cfg config.Config) (http.Handler, error) {
 		return nil, err
 	}
 	h := &Handler{
-		store:    store,
-		ingest:   ingest.NewService(store, engine),
-		exporter: snapshot.NewExporter(store, cfg.DBPath),
+		store:     store,
+		ingest:    ingest.NewService(store, engine),
+		exporter:  snapshot.NewExporter(store, cfg.DBPath),
+		ownsStore: ownsStore,
 	}
-	return h.routes(), nil
+	h.router, err = h.routes()
+	if err != nil {
+		if ownsStore {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+	return h, nil
 }
 
-func (h *Handler) routes() http.Handler {
+func (h *Handler) Close() error {
+	if !h.ownsStore || h.store == nil {
+		return nil
+	}
+	return h.store.Close()
+}
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.router.ServeHTTP(w, r)
+}
+
+func (h *Handler) routes() (http.Handler, error) {
 	mux := http.NewServeMux()
-	staticRoot, _ := fs.Sub(staticFS, "static")
+	staticRoot, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return nil, fmt.Errorf("load static assets: %w", err)
+	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticRoot))))
 	mux.HandleFunc("GET /api/v1/health", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/controls", h.handleCreateControl)
@@ -78,7 +104,7 @@ func (h *Handler) routes() http.Handler {
 	mux.HandleFunc("GET /controls/{controlID}/heatmap", h.handleHeatmapPanel)
 	mux.HandleFunc("GET /snapshots", h.handleSnapshotsPage)
 	mux.HandleFunc("POST /snapshots", h.handleSnapshotsCreate)
-	return mux
+	return mux, nil
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +181,7 @@ func (h *Handler) handleHome(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	renderComponent(w, http.StatusOK, views.HomePage(views.HomePageData{Controls: items}))
+	renderComponent(w, r, http.StatusOK, views.HomePage(views.HomePageData{Controls: items}))
 }
 
 func (h *Handler) handleControlPage(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +195,7 @@ func (h *Handler) handleControlPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	renderComponent(w, http.StatusOK, views.ControlPage(pageData))
+	renderComponent(w, r, http.StatusOK, views.ControlPage(pageData))
 }
 
 func (h *Handler) handleHeatmapPanel(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +209,7 @@ func (h *Handler) handleHeatmapPanel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	renderComponent(w, http.StatusOK, views.HeatmapPanel(pageData.Heatmap))
+	renderComponent(w, r, http.StatusOK, views.HeatmapPanel(pageData.Heatmap))
 }
 
 func (h *Handler) handleSnapshotsPage(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +218,7 @@ func (h *Handler) handleSnapshotsPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	renderComponent(w, http.StatusOK, views.SnapshotsPage(views.SnapshotsPageData{Snapshots: items}))
+	renderComponent(w, r, http.StatusOK, views.SnapshotsPage(views.SnapshotsPageData{Snapshots: items}))
 }
 
 func (h *Handler) handleSnapshotsCreate(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +236,7 @@ func (h *Handler) handleSnapshotsCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
-		renderComponent(w, http.StatusOK, views.SnapshotList(items))
+		renderComponent(w, r, http.StatusOK, views.SnapshotList(items))
 		return
 	}
 	http.Redirect(w, r, "/snapshots", http.StatusSeeOther)
@@ -341,10 +367,10 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-func renderComponent(w http.ResponseWriter, status int, component templ.Component) {
+func renderComponent(w http.ResponseWriter, r *http.Request, status int, component templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = component.Render(rContext(), w)
+	_ = component.Render(r.Context(), w)
 }
 
 func defaultString(value, fallback string) string {
@@ -352,8 +378,4 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func rContext() context.Context {
-	return context.Background()
 }

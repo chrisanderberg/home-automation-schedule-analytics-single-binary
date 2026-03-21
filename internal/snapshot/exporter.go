@@ -53,10 +53,20 @@ func (e *Exporter) Export(ctx context.Context, name string) (storage.SnapshotRec
 		return storage.SnapshotRecord{}, fmt.Errorf("create snapshot directory: %w", err)
 	}
 
-	path, err := nextAvailableSnapshotPath(e.snapshotDir, name, e.now())
+	path, reserved, err := reserveNextSnapshotPath(e.snapshotDir, name, e.now())
 	if err != nil {
 		return storage.SnapshotRecord{}, err
 	}
+	if err := reserved.Close(); err != nil {
+		_ = os.Remove(path)
+		return storage.SnapshotRecord{}, fmt.Errorf("close reserved snapshot file: %w", err)
+	}
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(path)
+		}
+	}()
 	snapshotStore, err := storage.Open(path)
 	if err != nil {
 		return storage.SnapshotRecord{}, fmt.Errorf("open snapshot db: %w", err)
@@ -87,6 +97,7 @@ func (e *Exporter) Export(ctx context.Context, name string) (storage.SnapshotRec
 	if err != nil {
 		return storage.SnapshotRecord{}, err
 	}
+	success = true
 	return record, nil
 }
 
@@ -99,23 +110,34 @@ func snapshotFileName(name string, now time.Time) string {
 	return fmt.Sprintf("%s-%s.sqlite", now.UTC().Format("20060102T150405.000Z"), sanitized)
 }
 
-func nextAvailableSnapshotPath(snapshotDir, name string, now time.Time) (string, error) {
+func reserveNextSnapshotPath(snapshotDir, name string, now time.Time) (string, *os.File, error) {
 	base := filepath.Join(snapshotDir, snapshotFileName(name, now))
-	if _, err := os.Stat(base); errors.Is(err, os.ErrNotExist) {
-		return base, nil
-	} else if err != nil {
-		return "", fmt.Errorf("stat snapshot path: %w", err)
+	if file, err := reserveSnapshotFile(base); err == nil {
+		return base, file, nil
+	} else if !errors.Is(err, os.ErrExist) {
+		return "", nil, err
 	}
 
 	ext := filepath.Ext(base)
 	prefix := strings.TrimSuffix(base, ext)
 	for i := 1; i < 1000; i++ {
 		candidate := prefix + "-" + strconv.Itoa(i) + ext
-		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
-			return candidate, nil
-		} else if err != nil {
-			return "", fmt.Errorf("stat snapshot path: %w", err)
+		if file, err := reserveSnapshotFile(candidate); err == nil {
+			return candidate, file, nil
+		} else if !errors.Is(err, os.ErrExist) {
+			return "", nil, err
 		}
 	}
-	return "", fmt.Errorf("unable to allocate unique snapshot filename")
+	return "", nil, fmt.Errorf("unable to allocate unique snapshot filename")
+}
+
+func reserveSnapshotFile(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("reserve snapshot path: %w", err)
+	}
+	return file, nil
 }

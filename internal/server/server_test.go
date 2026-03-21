@@ -27,6 +27,11 @@ func newHandler(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("server.New() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := handler.Close(); err != nil {
+			t.Fatalf("handler.Close() error = %v", err)
+		}
+	})
 	return handler
 }
 
