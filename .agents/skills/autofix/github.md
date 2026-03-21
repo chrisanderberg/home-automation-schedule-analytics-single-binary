@@ -57,7 +57,7 @@ while :; do
     }')"
 
   all_threads="$(jq -c \
-    '. + (.data.repository.pullRequest.reviewThreads.nodes // [])' \
+    '. + $page' \
     <<<"$all_threads" \
     --argjson page "$(jq '.data.repository.pullRequest.reviewThreads.nodes // []' <<<"$page_json")")"
 

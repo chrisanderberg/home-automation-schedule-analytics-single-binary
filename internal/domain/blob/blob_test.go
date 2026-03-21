@@ -38,6 +38,20 @@ func TestLayoutExposesValidatedStateCount(t *testing.T) {
 	}
 }
 
+func TestLayoutNumStatesPanicsForInvalidZeroValue(t *testing.T) {
+	t.Parallel()
+
+	var layout blob.Layout
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NumStates() expected panic for invalid zero-value layout")
+		}
+	}()
+
+	_ = layout.NumStates()
+}
+
 func TestAccumulatorRoundTripAndMerge(t *testing.T) {
 	t.Parallel()
 

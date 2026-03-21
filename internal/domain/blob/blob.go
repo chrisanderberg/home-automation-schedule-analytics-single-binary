@@ -30,8 +30,11 @@ func NewLayout(numStates int) (Layout, error) {
 	return Layout{numStates: numStates}, nil
 }
 
-// NumStates returns the validated state count used by this layout.
+// NumStates returns the validated state count used by this layout. It panics if
+// called on an invalid Layout, including the zero value, because all exported
+// Layout accessors require the same construction invariant as NewLayout.
 func (l Layout) NumStates() int {
+	l.mustValidate()
 	return l.numStates
 }
 
