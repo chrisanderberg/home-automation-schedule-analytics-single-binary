@@ -247,7 +247,23 @@ func (s *Store) UpsertAggregate(ctx context.Context, record AggregateRecord) err
 	if len(record.Data) != layout.ByteSize() {
 		return fmt.Errorf("aggregate blob size mismatch")
 	}
-	_, err = s.db.ExecContext(ctx, `
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin aggregate tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if err := validateAggregateControlShape(tx, ctx, record.ControlID, record.NumStates); err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO aggregates(control_id, quarter_index, num_states, data, updated_at_ms)
 		VALUES(?, ?, ?, ?, ?)
 		ON CONFLICT(control_id, quarter_index) DO UPDATE SET
@@ -258,6 +274,11 @@ func (s *Store) UpsertAggregate(ctx context.Context, record AggregateRecord) err
 	if err != nil {
 		return fmt.Errorf("upsert aggregate: %w", err)
 	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit aggregate tx: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -286,6 +307,10 @@ func (s *Store) ApplyAggregateDelta(ctx context.Context, controlID string, quart
 		}
 	}()
 
+	if err := validateAggregateControlShape(tx, ctx, controlID, numStates); err != nil {
+		return err
+	}
+
 	existingStates, existingData, err := loadAggregate(tx, ctx, controlID, quarterIndex)
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -304,6 +329,25 @@ func (s *Store) ApplyAggregateDelta(ctx context.Context, controlID string, quart
 		return fmt.Errorf("commit aggregate tx: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+func validateAggregateControlShape(tx *sql.Tx, ctx context.Context, controlID string, numStates int) error {
+	var controlNumStates int
+	err := tx.QueryRowContext(ctx, `
+		SELECT num_states
+		FROM controls
+		WHERE control_id = ?
+	`, controlID).Scan(&controlNumStates)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("load control for aggregate: %w", err)
+	}
+	if numStates != controlNumStates {
+		return ErrControlShapeChanged
+	}
 	return nil
 }
 
@@ -334,7 +378,7 @@ func insertAggregate(tx *sql.Tx, ctx context.Context, controlID string, quarterI
 
 func mergeAndUpdateAggregate(tx *sql.Tx, ctx context.Context, controlID string, quarterIndex, numStates, existingStates int, existingData, delta []byte, now time.Time) error {
 	if existingStates != numStates {
-		return fmt.Errorf("aggregate state count mismatch")
+		return ErrControlShapeChanged
 	}
 	acc, err := blob.FromBytes(numStates, existingData)
 	if err != nil {

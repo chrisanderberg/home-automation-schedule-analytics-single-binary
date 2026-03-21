@@ -285,7 +285,80 @@ func TestOpenEnablesForeignKeysForAllConnections(t *testing.T) {
 		Data:         acc.Bytes(),
 		UpdatedAtMs:  time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC).UnixMilli(),
 	})
-	if err == nil {
-		t.Fatal("UpsertAggregate() expected foreign key error for missing control")
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("UpsertAggregate() error = %v, want %v", err, storage.ErrNotFound)
+	}
+}
+
+func TestUpsertAggregateRejectsControlShapeChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	now := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	if err := store.UpsertControl(ctx, control.Control{
+		ID:        "lamp",
+		Type:      control.TypeDiscrete,
+		NumStates: 2,
+	}, now); err != nil {
+		t.Fatalf("UpsertControl() error = %v", err)
+	}
+
+	acc, err := blob.NewAccumulator(3)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+
+	err = store.UpsertAggregate(ctx, storage.AggregateRecord{
+		ControlID:    "lamp",
+		QuarterIndex: 1,
+		NumStates:    3,
+		Data:         acc.Bytes(),
+		UpdatedAtMs:  now.UnixMilli(),
+	})
+	if !errors.Is(err, storage.ErrControlShapeChanged) {
+		t.Fatalf("UpsertAggregate() error = %v, want %v", err, storage.ErrControlShapeChanged)
+	}
+}
+
+func TestApplyAggregateDeltaRejectsMissingControl(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	now := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+
+	err = store.ApplyAggregateDelta(ctx, "missing", 1, 2, acc.Bytes(), now)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("ApplyAggregateDelta() error = %v, want %v", err, storage.ErrNotFound)
+	}
+}
+
+func TestApplyAggregateDeltaRejectsControlShapeChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	now := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	if err := store.UpsertControl(ctx, control.Control{
+		ID:        "lamp",
+		Type:      control.TypeDiscrete,
+		NumStates: 2,
+	}, now); err != nil {
+		t.Fatalf("UpsertControl() error = %v", err)
+	}
+
+	acc, err := blob.NewAccumulator(3)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+
+	err = store.ApplyAggregateDelta(ctx, "lamp", 1, 3, acc.Bytes(), now)
+	if !errors.Is(err, storage.ErrControlShapeChanged) {
+		t.Fatalf("ApplyAggregateDelta() error = %v, want %v", err, storage.ErrControlShapeChanged)
 	}
 }

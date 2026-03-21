@@ -141,7 +141,13 @@ func (a *Accumulator) AddHolding(state, clock, bucket int, value uint64) error {
 	if err := validateClockBucket(clock, bucket); err != nil {
 		return err
 	}
-	a.words[a.layout.HoldIndex(state, clock, bucket)] += value
+	index := a.layout.HoldIndex(state, clock, bucket)
+	sum := a.words[index] + value
+	if sum < a.words[index] || sum < value {
+		a.words[index] = math.MaxUint64
+		return nil
+	}
+	a.words[index] = sum
 	return nil
 }
 
@@ -158,7 +164,13 @@ func (a *Accumulator) AddTransition(from, to, clock, bucket int, value uint64) e
 	if err := validateClockBucket(clock, bucket); err != nil {
 		return err
 	}
-	a.words[a.layout.TransitionIndex(from, to, clock, bucket)] += value
+	index := a.layout.TransitionIndex(from, to, clock, bucket)
+	sum := a.words[index] + value
+	if sum < a.words[index] || sum < value {
+		a.words[index] = math.MaxUint64
+		return nil
+	}
+	a.words[index] = sum
 	return nil
 }
 

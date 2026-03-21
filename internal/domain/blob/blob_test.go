@@ -200,6 +200,52 @@ func TestAccumulatorMergeSaturatesAtMaxUint64(t *testing.T) {
 	}
 }
 
+func TestAccumulatorAddHoldingSaturatesAtMaxUint64(t *testing.T) {
+	t.Parallel()
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+	if err := acc.AddHolding(0, 0, 0, math.MaxUint64); err != nil {
+		t.Fatalf("AddHolding() error = %v", err)
+	}
+	if err := acc.AddHolding(0, 0, 0, 1); err != nil {
+		t.Fatalf("AddHolding() overflow error = %v", err)
+	}
+
+	got, err := acc.Holding(0, 0, 0)
+	if err != nil {
+		t.Fatalf("Holding() error = %v", err)
+	}
+	if got != math.MaxUint64 {
+		t.Fatalf("Holding() = %d, want %d", got, uint64(math.MaxUint64))
+	}
+}
+
+func TestAccumulatorAddTransitionSaturatesAtMaxUint64(t *testing.T) {
+	t.Parallel()
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+	if err := acc.AddTransition(0, 1, 0, 0, math.MaxUint64); err != nil {
+		t.Fatalf("AddTransition() error = %v", err)
+	}
+	if err := acc.AddTransition(0, 1, 0, 0, 1); err != nil {
+		t.Fatalf("AddTransition() overflow error = %v", err)
+	}
+
+	got, err := acc.Transition(0, 1, 0, 0)
+	if err != nil {
+		t.Fatalf("Transition() error = %v", err)
+	}
+	if got != math.MaxUint64 {
+		t.Fatalf("Transition() = %d, want %d", got, uint64(math.MaxUint64))
+	}
+}
+
 func TestFromBytesRejectsWrongSize(t *testing.T) {
 	t.Parallel()
 
