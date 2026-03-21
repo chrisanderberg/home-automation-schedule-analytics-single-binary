@@ -6,7 +6,7 @@ for understanding user preferences in automated home environments.
 
 ## Prerequisites
 
-- Go 1.22+
+- Go 1.24+
 - [templ CLI](https://templ.guide/quick-start/installation)
 
 ## Quick start

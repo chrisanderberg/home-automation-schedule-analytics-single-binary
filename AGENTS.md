@@ -2,9 +2,9 @@
 
 ## Authority and scope
 - This file is the single source of truth for how to work in this repo.
-- Domain spec is canonical in `../planning/single-bin/spec.md`.
-- Plan is canonical in `../planning/single-bin/plan.md`.
-- Assumptions are canonical in `../planning/single-bin/assumptions.md`.
+- Domain spec is canonical in `planning/single-bin/spec.md`.
+- Plan is canonical in `planning/single-bin/plan.md`.
+- Assumptions are canonical in `planning/single-bin/assumptions.md`.
 - Do not introduce new semantics that contradict the domain spec.
 
 ## Milestone execution rule (two-step)
@@ -42,7 +42,7 @@ make run
 ```
 
 ## Canonical documents
-- Domain spec: `../planning/single-bin/spec.md`
-- Plan: `../planning/single-bin/plan.md`
-- Assumptions: `../planning/single-bin/assumptions.md`
+- Domain spec: `planning/single-bin/spec.md`
+- Plan: `planning/single-bin/plan.md`
+- Assumptions: `planning/single-bin/assumptions.md`
 - Decisions: `DECISIONS.md`
