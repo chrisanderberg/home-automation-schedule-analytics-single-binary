@@ -18,6 +18,7 @@ import (
 )
 
 var ErrNotFound = errors.New("not found")
+var ErrControlShapeChanged = errors.New("control shape change requires aggregate rebuild")
 
 type AggregateRecord struct {
 	ControlID    string
@@ -129,17 +130,52 @@ func (s *Store) UpsertControl(ctx context.Context, c control.Control, now time.T
 		return err
 	}
 	nowMs := now.UTC().UnixMilli()
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO controls(control_id, control_type, num_states, created_at_ms, updated_at_ms)
-		VALUES(?, ?, ?, ?, ?)
-		ON CONFLICT(control_id) DO UPDATE SET
-			control_type = excluded.control_type,
-			num_states = excluded.num_states,
-			updated_at_ms = excluded.updated_at_ms
-	`, c.ID, string(c.Type), c.NumStates, nowMs, nowMs)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("upsert control: %w", err)
+		return fmt.Errorf("begin control tx: %w", err)
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var existingType string
+	var existingStates int
+	err = tx.QueryRowContext(ctx, `
+		SELECT control_type, num_states
+		FROM controls
+		WHERE control_id = ?
+	`, c.ID).Scan(&existingType, &existingStates)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO controls(control_id, control_type, num_states, created_at_ms, updated_at_ms)
+			VALUES(?, ?, ?, ?, ?)
+		`, c.ID, string(c.Type), c.NumStates, nowMs, nowMs); err != nil {
+			return fmt.Errorf("insert control: %w", err)
+		}
+	case err != nil:
+		return fmt.Errorf("load control: %w", err)
+	default:
+		if existingType != string(c.Type) || existingStates != c.NumStates {
+			return fmt.Errorf("%w: control_id=%s stored=(%s,%d) incoming=(%s,%d)",
+				ErrControlShapeChanged, c.ID, existingType, existingStates, c.Type, c.NumStates)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE controls
+			SET updated_at_ms = ?
+			WHERE control_id = ?
+		`, nowMs, c.ID); err != nil {
+			return fmt.Errorf("update control: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit control tx: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -172,7 +208,11 @@ func listControls(ctx context.Context, q queryer) ([]ControlSummary, error) {
 			c.control_type,
 			c.num_states,
 			COUNT(a.quarter_index) AS quarter_count,
-			COALESCE(MAX(a.updated_at_ms), c.updated_at_ms) AS last_updated_ms
+			CASE
+				WHEN MAX(a.updated_at_ms) IS NULL THEN c.updated_at_ms
+				WHEN MAX(a.updated_at_ms) > c.updated_at_ms THEN MAX(a.updated_at_ms)
+				ELSE c.updated_at_ms
+			END AS last_updated_ms
 		FROM controls c
 		LEFT JOIN aggregates a ON a.control_id = c.control_id
 		GROUP BY c.control_id, c.control_type, c.num_states, c.updated_at_ms
@@ -239,62 +279,80 @@ func (s *Store) ApplyAggregateDelta(ctx context.Context, controlID string, quart
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
+	committed := false
 	defer func() {
-		if err != nil {
+		if !committed {
 			_ = tx.Rollback()
 		}
 	}()
 
-	var existingData []byte
-	var existingStates int
-	row := tx.QueryRowContext(ctx, `
-		SELECT num_states, data
-		FROM aggregates
-		WHERE control_id = ? AND quarter_index = ?
-	`, controlID, quarterIndex)
-	switch scanErr := row.Scan(&existingStates, &existingData); {
-	case errors.Is(scanErr, sql.ErrNoRows):
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO aggregates(control_id, quarter_index, num_states, data, updated_at_ms)
-			VALUES(?, ?, ?, ?, ?)
-		`, controlID, quarterIndex, numStates, delta, now.UTC().UnixMilli())
-		if err != nil {
-			return fmt.Errorf("insert aggregate: %w", err)
+	existingStates, existingData, err := loadAggregate(tx, ctx, controlID, quarterIndex)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		if err := insertAggregate(tx, ctx, controlID, quarterIndex, numStates, delta, now); err != nil {
+			return err
 		}
-	case scanErr != nil:
-		err = fmt.Errorf("load aggregate: %w", scanErr)
+	case err != nil:
 		return err
 	default:
-		if existingStates != numStates {
-			err = fmt.Errorf("aggregate state count mismatch")
+		if err := mergeAndUpdateAggregate(tx, ctx, controlID, quarterIndex, numStates, existingStates, existingData, delta, now); err != nil {
 			return err
-		}
-		acc, mergeErr := blob.FromBytes(numStates, existingData)
-		if mergeErr != nil {
-			err = mergeErr
-			return err
-		}
-		deltaAcc, mergeErr := blob.FromBytes(numStates, delta)
-		if mergeErr != nil {
-			err = mergeErr
-			return err
-		}
-		if mergeErr := acc.Merge(deltaAcc); mergeErr != nil {
-			err = mergeErr
-			return err
-		}
-		_, err = tx.ExecContext(ctx, `
-			UPDATE aggregates
-			SET data = ?, updated_at_ms = ?
-			WHERE control_id = ? AND quarter_index = ?
-		`, acc.Bytes(), now.UTC().UnixMilli(), controlID, quarterIndex)
-		if err != nil {
-			return fmt.Errorf("update aggregate: %w", err)
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit aggregate tx: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+func loadAggregate(tx *sql.Tx, ctx context.Context, controlID string, quarterIndex int) (numStates int, data []byte, err error) {
+	err = tx.QueryRowContext(ctx, `
+		SELECT num_states, data
+		FROM aggregates
+		WHERE control_id = ? AND quarter_index = ?
+	`, controlID, quarterIndex).Scan(&numStates, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil, ErrNotFound
+	}
+	if err != nil {
+		return 0, nil, fmt.Errorf("load aggregate: %w", err)
+	}
+	return numStates, data, nil
+}
+
+func insertAggregate(tx *sql.Tx, ctx context.Context, controlID string, quarterIndex, numStates int, delta []byte, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO aggregates(control_id, quarter_index, num_states, data, updated_at_ms)
+		VALUES(?, ?, ?, ?, ?)
+	`, controlID, quarterIndex, numStates, delta, now.UTC().UnixMilli()); err != nil {
+		return fmt.Errorf("insert aggregate: %w", err)
+	}
+	return nil
+}
+
+func mergeAndUpdateAggregate(tx *sql.Tx, ctx context.Context, controlID string, quarterIndex, numStates, existingStates int, existingData, delta []byte, now time.Time) error {
+	if existingStates != numStates {
+		return fmt.Errorf("aggregate state count mismatch")
+	}
+	acc, err := blob.FromBytes(numStates, existingData)
+	if err != nil {
+		return err
+	}
+	deltaAcc, err := blob.FromBytes(numStates, delta)
+	if err != nil {
+		return err
+	}
+	if err := acc.Merge(deltaAcc); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE aggregates
+		SET data = ?, updated_at_ms = ?
+		WHERE control_id = ? AND quarter_index = ?
+	`, acc.Bytes(), now.UTC().UnixMilli(), controlID, quarterIndex); err != nil {
+		return fmt.Errorf("update aggregate: %w", err)
 	}
 	return nil
 }

@@ -39,3 +39,11 @@
 - Snapshot filenames use UTC timestamps plus a sanitized snapshot name.
 - Rationale: the spec requires snapshot export and HTML management views but
   does not define a storage location.
+
+## 2026-03-20 — Control shape changes are rejected
+- Re-registering an existing control with a different `controlType` or
+  `numStates` returns an error instead of mutating the stored row in place.
+- Existing aggregates remain tied to the original validated control shape until
+  an explicit rebuild workflow exists.
+- Rationale: the spec defines aggregate blob layout from control shape, so an
+  in-place shape change would leave persisted aggregate blobs inconsistent.

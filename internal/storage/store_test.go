@@ -3,6 +3,7 @@ package storage_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -62,6 +63,40 @@ func TestStoreControlLifecycle(t *testing.T) {
 	}
 	if len(controls) != 1 {
 		t.Fatalf("len(ListControls()) = %d, want 1", len(controls))
+	}
+}
+
+func TestUpsertControlRejectsShapeChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	now := time.Date(2026, time.March, 20, 10, 0, 0, 0, time.UTC)
+
+	initial := control.Control{
+		ID:        "lamp",
+		Type:      control.TypeDiscrete,
+		NumStates: 3,
+	}
+	if err := store.UpsertControl(ctx, initial, now); err != nil {
+		t.Fatalf("UpsertControl(initial) error = %v", err)
+	}
+
+	err := store.UpsertControl(ctx, control.Control{
+		ID:        "lamp",
+		Type:      control.TypeSlider,
+		NumStates: 6,
+	}, now.Add(time.Hour))
+	if !errors.Is(err, storage.ErrControlShapeChanged) {
+		t.Fatalf("UpsertControl(shape change) error = %v, want %v", err, storage.ErrControlShapeChanged)
+	}
+
+	got, err := store.GetControl(ctx, "lamp")
+	if err != nil {
+		t.Fatalf("GetControl() error = %v", err)
+	}
+	if got != initial {
+		t.Fatalf("GetControl() = %+v, want %+v", got, initial)
 	}
 }
 
@@ -180,6 +215,48 @@ func TestStoreExportSnapshotData(t *testing.T) {
 	}
 	if len(aggregates) != 1 || aggregates[0].ControlID != "lamp" {
 		t.Fatalf("aggregates = %+v", aggregates)
+	}
+}
+
+func TestListControlsLastUpdatedUsesNewestControlOrAggregateTimestamp(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	controlTime := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	aggregateTime := controlTime.Add(-time.Hour)
+
+	if err := store.UpsertControl(ctx, control.Control{
+		ID:        "lamp",
+		Type:      control.TypeDiscrete,
+		NumStates: 2,
+	}, controlTime); err != nil {
+		t.Fatalf("UpsertControl() error = %v", err)
+	}
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+	if err := store.UpsertAggregate(ctx, storage.AggregateRecord{
+		ControlID:    "lamp",
+		QuarterIndex: 220,
+		NumStates:    2,
+		Data:         acc.Bytes(),
+		UpdatedAtMs:  aggregateTime.UnixMilli(),
+	}); err != nil {
+		t.Fatalf("UpsertAggregate() error = %v", err)
+	}
+
+	controls, err := store.ListControls(ctx)
+	if err != nil {
+		t.Fatalf("ListControls() error = %v", err)
+	}
+	if len(controls) != 1 {
+		t.Fatalf("len(ListControls()) = %d, want 1", len(controls))
+	}
+	if got, want := controls[0].LastUpdatedMs, controlTime.UnixMilli(); got != want {
+		t.Fatalf("LastUpdatedMs = %d, want %d", got, want)
 	}
 }
 

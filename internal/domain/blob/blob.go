@@ -51,6 +51,11 @@ func (l Layout) ByteSize() int {
 	return l.WordCount() * 8
 }
 
+// HoldIndex flattens a (state, clock, bucket) hold counter into one persisted
+// word offset using (state * GroupsPerState) + (clock * BucketsPerWeek) + bucket.
+// The ordering is state-major, then clock, then bucket. HoldIndex panics when
+// the layout or indices are invalid because mustValidate, mustValidateState,
+// and validateClockBucket enforce those invariants internally.
 func (l Layout) HoldIndex(state, clock, bucket int) int {
 	l.mustValidate()
 	l.mustValidateState(state)

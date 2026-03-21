@@ -198,34 +198,28 @@ Otherwise, post a neutral deferred/skipped summary and omit the commit field
 entirely. In manual review mode, "Modify" decisions are counted as deferred so
 the deferred/skipped totals remain unambiguous.
 
-The shell snippet below uses placeholder tokens such as `<commit-sha>`,
-`<pr-number>`, `<file-count>`, `<issue-count>`, and `<branch-name>` as examples.
-The AI agent or calling script must replace them at runtime, for example via
-environment-variable interpolation or template substitution, before executing
-the command.
-
 ```bash
-if [ -n "<commit-sha>" ]; then
-  gh pr comment <pr-number> --body "$(cat <<'EOF'
+if [ -n "${COMMIT_SHA}" ]; then
+  gh pr comment "${PR_NUMBER}" --body "$(cat <<EOF
 ## Fixes Applied Successfully
 
-Fixed <file-count> file(s) based on <issue-count> unresolved review comment(s).
+Fixed ${FILE_COUNT} file(s) based on ${ISSUE_COUNT} unresolved review comment(s).
 
 **Files modified:**
 - `path/to/file-a.ts`
 - `path/to/file-b.ts`
 
-**Commit:** `<commit-sha>`
+**Commit:** `${COMMIT_SHA}`
 
-The latest autofix changes are on the `<branch-name>` branch.
+The latest autofix changes are on the `${BRANCH_NAME}` branch.
 
 EOF
 )"
 else
-  gh pr comment <pr-number> --body "$(cat <<'EOF'
+  gh pr comment "${PR_NUMBER}" --body "$(cat <<EOF
 ## No Fixes Applied
 
-No changes were committed. <issue-count> issue(s) were deferred or skipped after review.
+No changes were committed. ${ISSUE_COUNT} issue(s) were deferred or skipped after review.
 
 EOF
 )"
