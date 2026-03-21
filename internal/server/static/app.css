@@ -150,7 +150,7 @@ button {
 }
 
 code {
-  font-family: "SFMono-Regular", "Consolas", monospace;
+  font-family: SFMono-Regular, Consolas, monospace;
   font-size: 0.9em;
 }
 

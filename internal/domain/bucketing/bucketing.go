@@ -145,6 +145,8 @@ func meanSolarOffset(longitude float64) time.Duration {
 	return time.Duration(longitude*240) * time.Second
 }
 
+// NOAA's solar calculator uses this equation-of-time approximation; we keep the
+// result as a duration so downstream sunrise/sunset math stays in Go time units.
 func equationOfTimeDuration(ts time.Time) time.Duration {
 	gamma := fractionalYear(ts)
 	minutes := 229.18 * (0.000075 + 0.001868*math.Cos(gamma) - 0.032077*math.Sin(gamma) - 0.014615*math.Cos(2*gamma) - 0.040849*math.Sin(2*gamma))
@@ -178,7 +180,7 @@ func (e *Engine) unequalBucketAndBoundary(ts time.Time) (int, time.Time, error) 
 	}
 	prevStart := dayStart.AddDate(0, 0, -1)
 	nextStart := dayStart.AddDate(0, 0, 1)
-	prevSunrise, prevSunset, err := e.sunTimes(prevStart)
+	_, prevSunset, err := e.sunTimes(prevStart)
 	if err != nil {
 		return 0, time.Time{}, err
 	}
@@ -219,12 +221,6 @@ func (e *Engine) unequalBucketAndBoundary(ts time.Time) (int, time.Time, error) 
 	}
 	boundary := nightStart.Add(time.Duration(index+1) * nightStep)
 	bucket := 144 + index
-	if local.Before(sunrise) {
-		bucket = 144 + index
-	} else {
-		bucket = 144 + index
-	}
-	_ = prevSunrise
 	return weekday*blob.BucketsPerDay + bucket, boundary.UTC(), nil
 }
 
@@ -245,8 +241,8 @@ func (e *Engine) sunTimes(dayStart time.Time) (time.Time, time.Time, error) {
 	offsetMinutes := float64(offsetSeconds) / 60
 	eqMinutes := equationOfTimeDuration(noon).Minutes()
 	solarNoonMinutes := 720 - 4*e.cfg.Longitude - eqMinutes + offsetMinutes
-	sunrise := dayStart.Add(time.Duration((solarNoonMinutes-hourAngle*4)*float64(time.Minute)))
-	sunset := dayStart.Add(time.Duration((solarNoonMinutes+hourAngle*4)*float64(time.Minute)))
+	sunrise := dayStart.Add(time.Duration((solarNoonMinutes - hourAngle*4) * float64(time.Minute)))
+	sunset := dayStart.Add(time.Duration((solarNoonMinutes + hourAngle*4) * float64(time.Minute)))
 	if !sunrise.Before(sunset) {
 		return time.Time{}, time.Time{}, fmt.Errorf("invalid sunrise/sunset for date %s", dayStart.Format("2006-01-02"))
 	}

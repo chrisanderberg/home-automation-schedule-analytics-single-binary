@@ -37,10 +37,12 @@ Verify: `gh auth status`
 
 ## Workflow
 
-### Step 0: Load Repository Instructions (`AGENTS.md`)
+### Step 0: Load Repository Instructions (`AGENTS.md`) Deterministically
 
 Before any autofix actions, search for `AGENTS.md` in the current repository and load applicable instructions.
 
+- Prefer `AGENTS.md` in the repository root if present.
+- Otherwise, search top-level directories first, then the rest of the repository, and use the first case-sensitive `AGENTS.md` match found.
 - If found, follow its build/lint/test/commit guidance throughout the run.
 - If not found, continue with default workflow.
 
@@ -166,10 +168,11 @@ If any fixes were applied:
 
 ```bash
 git add <all-changed-files>
-git commit -m "fix: apply CodeRabbit auto-fixes"
+git commit -m "<message using AGENTS.md commit format, or 'fix: apply CodeRabbit auto-fixes' if none is specified>"
 ```
 
-Use one commit for all applied fixes in this run.
+Use one commit for all applied fixes in this run, following the commit message
+format loaded in Step 0 when the repository defines one.
 
 ### Step 9: Prompt Build/Lint Before Push
 

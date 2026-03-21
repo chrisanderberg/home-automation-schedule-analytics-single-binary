@@ -23,6 +23,9 @@ func newService(t *testing.T) (*ingest.Service, *storage.Store) {
 	if err != nil {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 	store := storage.NewFromDB(db)
 	if err := store.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error = %v", err)

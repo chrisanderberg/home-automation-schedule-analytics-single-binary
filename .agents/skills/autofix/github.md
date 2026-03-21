@@ -54,6 +54,10 @@ Filter criteria:
 
 Use the root comment body for the issue prompt.
 
+Note: `reviewThreads(first:100)` only returns the first 100 threads. If a PR has
+more unresolved CodeRabbit threads than that, paginate with the GraphQL cursor
+or increase the `first` value if your client and API usage allow it.
+
 ### 3. Post Summary Comment
 
 

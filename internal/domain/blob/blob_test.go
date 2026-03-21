@@ -43,21 +43,35 @@ func TestAccumulatorRoundTripAndMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromBytes() error = %v", err)
 	}
-	hold, _ := copyAcc.Holding(1, 0, 42)
+	hold, err := copyAcc.Holding(1, 0, 42)
+	if err != nil {
+		t.Fatalf("Holding() error = %v", err)
+	}
 	if hold != 1500 {
 		t.Fatalf("Holding() = %d, want 1500", hold)
 	}
-	trans, _ := copyAcc.Transition(2, 1, 4, 100)
+	trans, err := copyAcc.Transition(2, 1, 4, 100)
+	if err != nil {
+		t.Fatalf("Transition() error = %v", err)
+	}
 	if trans != 3 {
 		t.Fatalf("Transition() = %d, want 3", trans)
 	}
 
-	other, _ := blob.NewAccumulator(3)
-	_ = other.AddHolding(1, 0, 42, 500)
+	other, err := blob.NewAccumulator(3)
+	if err != nil {
+		t.Fatalf("NewAccumulator(other) error = %v", err)
+	}
+	if err := other.AddHolding(1, 0, 42, 500); err != nil {
+		t.Fatalf("other.AddHolding() error = %v", err)
+	}
 	if err := copyAcc.Merge(other); err != nil {
 		t.Fatalf("Merge() error = %v", err)
 	}
-	hold, _ = copyAcc.Holding(1, 0, 42)
+	hold, err = copyAcc.Holding(1, 0, 42)
+	if err != nil {
+		t.Fatalf("merged Holding() error = %v", err)
+	}
 	if hold != 2000 {
 		t.Fatalf("merged Holding() = %d, want 2000", hold)
 	}

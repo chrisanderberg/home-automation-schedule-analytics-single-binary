@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -352,7 +353,9 @@ func parseQuarter(raw string) (int, error) {
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("writeJSON encode error: status=%d err=%v", status, err)
+	}
 }
 
 func writeValidation(w http.ResponseWriter, err error) {
@@ -370,7 +373,9 @@ func writeError(w http.ResponseWriter, status int, err error) {
 func renderComponent(w http.ResponseWriter, r *http.Request, status int, component templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = component.Render(r.Context(), w)
+	if err := component.Render(r.Context(), w); err != nil {
+		log.Printf("renderComponent error: status=%d method=%s path=%s err=%v", status, r.Method, r.URL.Path, err)
+	}
 }
 
 func defaultString(value, fallback string) string {

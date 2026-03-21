@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -71,7 +72,11 @@ func (e *Exporter) Export(ctx context.Context, name string) (storage.SnapshotRec
 	if err != nil {
 		return storage.SnapshotRecord{}, fmt.Errorf("open snapshot db: %w", err)
 	}
-	defer snapshotStore.Close()
+	defer func() {
+		if cerr := snapshotStore.Close(); cerr != nil {
+			log.Printf("snapshot store close error: path=%s err=%v", path, cerr)
+		}
+	}()
 
 	controls, err := e.store.ListControls(ctx)
 	if err != nil {

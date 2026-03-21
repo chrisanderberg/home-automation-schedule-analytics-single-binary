@@ -8,6 +8,7 @@ type Segment struct {
 	End          time.Time
 }
 
+// Index maps a UTC timestamp to a compact quarter number since 1970.
 func Index(ts time.Time) int {
 	utc := ts.UTC()
 	quarter := int((utc.Month() - 1) / 3)
@@ -40,6 +41,8 @@ func quarterEnd(ts time.Time) time.Time {
 	utc := ts.UTC()
 	year := utc.Year()
 	month := utc.Month()
+	// Convert the current month to a zero-based quarter, then jump to the first
+	// month of the next quarter; the year-wrap branch handles values past December.
 	nextMonth := ((int(month)-1)/3)*3 + 4
 	if nextMonth > 12 {
 		year++

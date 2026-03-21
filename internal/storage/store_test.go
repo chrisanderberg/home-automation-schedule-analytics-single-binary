@@ -3,6 +3,7 @@ package storage_test
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,6 +20,8 @@ func newStore(t *testing.T) *storage.Store {
 	if err != nil {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	store := storage.NewFromDB(db)
 	if err := store.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error = %v", err)
@@ -118,8 +121,9 @@ func TestStoreSnapshots(t *testing.T) {
 	ctx := context.Background()
 	store := newStore(t)
 	now := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	snapshotPath := filepath.Join(t.TempDir(), "q1.sqlite")
 
-	record, err := store.CreateSnapshot(ctx, "q1", "/tmp/q1.sqlite", now)
+	record, err := store.CreateSnapshot(ctx, "q1", snapshotPath, now)
 	if err != nil {
 		t.Fatalf("CreateSnapshot() error = %v", err)
 	}

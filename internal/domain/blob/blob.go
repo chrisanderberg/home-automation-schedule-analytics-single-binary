@@ -44,6 +44,8 @@ func (l Layout) HoldIndex(state, clock, bucket int) int {
 	return (state * GroupsPerState) + (clock * BucketsPerWeek) + bucket
 }
 
+// TransitionGroupIndex flattens transitions by from-state while skipping the
+// self-transition slot in each group so the compacted list stays dense.
 func (l Layout) TransitionGroupIndex(from, to int) int {
 	offset := to
 	if to > from {

@@ -4,11 +4,18 @@ function renderHeatmaps(root) {
     const raw = canvas.dataset.heatmapValues || "";
     const values = raw.length === 0 ? [] : raw.split(",").map((value) => Number(value));
     const ctx = canvas.getContext("2d");
+    // 288 five-minute buckets per day across 7 days in the week view.
     const width = 288;
     const height = 7;
     const cellWidth = canvas.width / width;
     const cellHeight = canvas.height / height;
     const max = values.reduce((acc, value) => Math.max(acc, value), 0);
+    const expectedSize = width * height;
+
+    if (values.length !== expectedSize) {
+      console.warn("heatmap data length mismatch", { actual: values.length, expected: expectedSize });
+      return;
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     values.forEach((value, index) => {
