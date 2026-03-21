@@ -3,6 +3,7 @@ package blob
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 const (
@@ -182,9 +183,9 @@ func (a *Accumulator) Transition(from, to, clock, bucket int) (uint64, error) {
 	return a.words[a.layout.TransitionIndex(from, to, clock, bucket)], nil
 }
 
-// Merge performs element-wise uint64 addition across a.words and other.words.
-// Long-running accumulation can overflow those counters, so callers that need
-// stricter behavior should add explicit checks or switch to saturating math.
+// Merge performs element-wise saturating uint64 addition across a.words and
+// other.words so long-running accumulation caps at MaxUint64 instead of
+// wrapping back to zero.
 func (a *Accumulator) Merge(other *Accumulator) error {
 	if other == nil {
 		return fmt.Errorf("other accumulator is required")
@@ -193,6 +194,10 @@ func (a *Accumulator) Merge(other *Accumulator) error {
 		return fmt.Errorf("layout mismatch")
 	}
 	for i := range a.words {
+		if a.words[i] > math.MaxUint64-other.words[i] {
+			a.words[i] = math.MaxUint64
+			continue
+		}
 		a.words[i] += other.words[i]
 	}
 	return nil

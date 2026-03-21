@@ -139,7 +139,7 @@ For each "Fix" issue (CRITICAL first):
 **If "Apply fix":**
 - Apply with Edit tool
 - Track changed files for a single consolidated commit after all fixes
-- Confirm: "✅ Fix applied and commented"
+- Confirm: "✅ Fix applied"
 
 **If "Defer":**
 - Ask for reason (AskUserQuestion)

@@ -1,6 +1,7 @@
 package blob_test
 
 import (
+	"math"
 	"testing"
 
 	"home-automation-schedule-analytics-single-bin/internal/domain/blob"
@@ -14,13 +15,13 @@ func TestLayoutMatchesSpec(t *testing.T) {
 		t.Fatalf("NewLayout() error = %v", err)
 	}
 
-	if got, want := layout.HoldIndex(2, 3, 17), (2*10080)+(3*2016)+17; got != want {
+	if got, want := layout.HoldIndex(2, 3, 17), (2*blob.GroupsPerState)+(3*blob.BucketsPerWeek)+17; got != want {
 		t.Fatalf("HoldIndex() = %d, want %d", got, want)
 	}
 	if got, want := layout.TransitionGroupIndex(1, 3), 1*3+2; got != want {
 		t.Fatalf("TransitionGroupIndex() = %d, want %d", got, want)
 	}
-	if got, want := layout.TransitionIndex(1, 3, 2, 99), (4*10080)+((1*3+2)*10080)+(2*2016)+99; got != want {
+	if got, want := layout.TransitionIndex(1, 3, 2, 99), (4*blob.GroupsPerState)+((1*3+2)*blob.GroupsPerState)+(2*blob.BucketsPerWeek)+99; got != want {
 		t.Fatalf("TransitionIndex() = %d, want %d", got, want)
 	}
 }
@@ -98,6 +99,126 @@ func TestAccumulatorRejectsSelfTransition(t *testing.T) {
 	}
 	if err := acc.AddTransition(1, 1, 0, 0, 1); err == nil {
 		t.Fatal("AddTransition() expected error for self-transition")
+	}
+}
+
+func TestAccumulatorRejectsNegativeInputs(t *testing.T) {
+	t.Parallel()
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		fn   func() error
+	}{
+		{
+			name: "holding negative state",
+			fn: func() error {
+				return acc.AddHolding(-1, 0, 0, 1)
+			},
+		},
+		{
+			name: "holding negative clock",
+			fn: func() error {
+				return acc.AddHolding(0, -1, 0, 1)
+			},
+		},
+		{
+			name: "holding negative bucket",
+			fn: func() error {
+				return acc.AddHolding(0, 0, -1, 1)
+			},
+		},
+		{
+			name: "transition negative from",
+			fn: func() error {
+				return acc.AddTransition(-1, 1, 0, 0, 1)
+			},
+		},
+		{
+			name: "transition negative to",
+			fn: func() error {
+				return acc.AddTransition(0, -1, 0, 0, 1)
+			},
+		},
+		{
+			name: "transition negative clock",
+			fn: func() error {
+				return acc.AddTransition(0, 1, -1, 0, 1)
+			},
+		},
+		{
+			name: "transition negative bucket",
+			fn: func() error {
+				return acc.AddTransition(0, 1, 0, -1, 1)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if err := tc.fn(); err == nil {
+				t.Fatalf("%s: expected error", tc.name)
+			}
+		})
+	}
+}
+
+func TestAccumulatorMergeSaturatesAtMaxUint64(t *testing.T) {
+	t.Parallel()
+
+	left, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator(left) error = %v", err)
+	}
+	right, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator(right) error = %v", err)
+	}
+	if err := left.AddHolding(0, 0, 0, math.MaxUint64); err != nil {
+		t.Fatalf("left.AddHolding() error = %v", err)
+	}
+	if err := right.AddHolding(0, 0, 0, 1); err != nil {
+		t.Fatalf("right.AddHolding() error = %v", err)
+	}
+
+	if err := left.Merge(right); err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+
+	got, err := left.Holding(0, 0, 0)
+	if err != nil {
+		t.Fatalf("Holding() error = %v", err)
+	}
+	if got != math.MaxUint64 {
+		t.Fatalf("Holding() = %d, want %d", got, uint64(math.MaxUint64))
+	}
+}
+
+func TestFromBytesRejectsWrongSize(t *testing.T) {
+	t.Parallel()
+
+	if _, err := blob.FromBytes(2, []byte{0, 1, 2, 3}); err == nil {
+		t.Fatal("FromBytes() expected error for wrong size")
+	}
+}
+
+func TestNewLayoutBoundaryValues(t *testing.T) {
+	t.Parallel()
+
+	if _, err := blob.NewLayout(1); err == nil {
+		t.Fatal("NewLayout() expected error for too few states")
+	}
+	if _, err := blob.NewLayout(2); err != nil {
+		t.Fatalf("NewLayout(2) error = %v", err)
+	}
+	if _, err := blob.NewLayout(blob.MaxNumStates); err != nil {
+		t.Fatalf("NewLayout(MaxNumStates) error = %v", err)
 	}
 }
 
