@@ -15,6 +15,15 @@ func TestLayoutMatchesSpec(t *testing.T) {
 		t.Fatalf("NewLayout() error = %v", err)
 	}
 
+	// These assertions mirror the layout formulas so future changes can be
+	// checked against the index contract. layout.HoldIndex is computed as
+	// state*blob.GroupsPerState + clock*blob.BucketsPerWeek + bucket.
+	// layout.TransitionGroupIndex packs the off-diagonal transition matrix as
+	// from*(numStates-1)+adjustedTo, where adjustedTo skips the diagonal entry.
+	// layout.TransitionIndex then adds the transition section offset
+	// (numStates*blob.GroupsPerState), plus
+	// layout.TransitionGroupIndex(from, to)*blob.GroupsPerState, plus the bucket
+	// offset and position within the group.
 	if got, want := layout.HoldIndex(2, 3, 17), (2*blob.GroupsPerState)+(3*blob.BucketsPerWeek)+17; got != want {
 		t.Fatalf("HoldIndex() = %d, want %d", got, want)
 	}
@@ -380,6 +389,58 @@ func TestHoldIndexPanicsOnInvalidInput(t *testing.T) {
 			defer func() {
 				if recover() == nil {
 					t.Fatalf("HoldIndex() expected panic for invalid %s", tc.name)
+				}
+			}()
+			tc.fn()
+		})
+	}
+}
+
+func TestTransitionIndexPanicsOnInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	layout, err := blob.NewLayout(2)
+	if err != nil {
+		t.Fatalf("NewLayout() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		fn   func()
+	}{
+		{
+			name: "from",
+			fn: func() {
+				_ = layout.TransitionIndex(2, 1, 0, 0)
+			},
+		},
+		{
+			name: "to",
+			fn: func() {
+				_ = layout.TransitionIndex(0, 2, 0, 0)
+			},
+		},
+		{
+			name: "clock",
+			fn: func() {
+				_ = layout.TransitionIndex(0, 1, blob.ClocksPerEvent, 0)
+			},
+		},
+		{
+			name: "bucket",
+			fn: func() {
+				_ = layout.TransitionIndex(0, 1, 0, blob.BucketsPerWeek)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("TransitionIndex() expected panic for invalid %s", tc.name)
 				}
 			}()
 			tc.fn()
