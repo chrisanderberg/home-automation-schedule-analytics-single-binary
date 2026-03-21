@@ -182,3 +182,33 @@ func TestStoreExportSnapshotData(t *testing.T) {
 		t.Fatalf("aggregates = %+v", aggregates)
 	}
 }
+
+func TestOpenEnablesForeignKeysForAllConnections(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "store.sqlite")
+	store, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+
+	err = store.UpsertAggregate(ctx, storage.AggregateRecord{
+		ControlID:    "missing",
+		QuarterIndex: 1,
+		NumStates:    2,
+		Data:         acc.Bytes(),
+		UpdatedAtMs:  time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC).UnixMilli(),
+	})
+	if err == nil {
+		t.Fatal("UpsertAggregate() expected foreign key error for missing control")
+	}
+}

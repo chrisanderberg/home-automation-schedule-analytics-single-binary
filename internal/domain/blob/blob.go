@@ -51,6 +51,11 @@ func (l Layout) ByteSize() int {
 }
 
 func (l Layout) HoldIndex(state, clock, bucket int) int {
+	l.mustValidate()
+	l.mustValidateState(state)
+	if err := validateClockBucket(clock, bucket); err != nil {
+		panic("blob: invalid hold clock or bucket")
+	}
 	return (state * GroupsPerState) + (clock * BucketsPerWeek) + bucket
 }
 
@@ -177,6 +182,9 @@ func (a *Accumulator) Transition(from, to, clock, bucket int) (uint64, error) {
 	return a.words[a.layout.TransitionIndex(from, to, clock, bucket)], nil
 }
 
+// Merge performs element-wise uint64 addition across a.words and other.words.
+// Long-running accumulation can overflow those counters, so callers that need
+// stricter behavior should add explicit checks or switch to saturating math.
 func (a *Accumulator) Merge(other *Accumulator) error {
 	if other == nil {
 		return fmt.Errorf("other accumulator is required")

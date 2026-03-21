@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -50,7 +52,7 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -80,7 +82,6 @@ func (s *Store) Close() error {
 func (s *Store) Init(ctx context.Context) error {
 	stmts := []string{
 		`PRAGMA journal_mode = WAL;`,
-		`PRAGMA foreign_keys = ON;`,
 		`CREATE TABLE IF NOT EXISTS controls (
 			control_id TEXT PRIMARY KEY,
 			control_type TEXT NOT NULL,
@@ -110,6 +111,17 @@ func (s *Store) Init(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func sqliteDSN(path string) string {
+	params := url.Values{
+		"_pragma": []string{"foreign_keys(ON)"},
+	}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + params.Encode()
 }
 
 func (s *Store) UpsertControl(ctx context.Context, c control.Control, now time.Time) error {
@@ -218,6 +230,11 @@ func (s *Store) ApplyAggregateDelta(ctx context.Context, controlID string, quart
 		return fmt.Errorf("aggregate delta size mismatch")
 	}
 
+	// ApplyAggregateDelta validates the incoming delta with blob.NewLayout, then
+	// runs a single transaction to load any existing aggregates row, require
+	// existingStates == numStates, and either INSERT the delta as-is or decode it
+	// with blob.FromBytes, acc.Merge it into the stored accumulator, and UPDATE
+	// aggregates atomically so the load/merge/write sequence cannot interleave.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -380,8 +397,11 @@ func (s *Store) ExportSnapshotData(ctx context.Context) ([]ControlSummary, []Agg
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin read tx: %w", err)
 	}
+	committed := false
 	defer func() {
-		_ = tx.Rollback()
+		if !committed {
+			_ = tx.Rollback()
+		}
 	}()
 
 	controls, err := listControls(ctx, tx)
@@ -395,6 +415,7 @@ func (s *Store) ExportSnapshotData(ctx context.Context) ([]ControlSummary, []Agg
 	if err := tx.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("commit read tx: %w", err)
 	}
+	committed = true
 	return controls, aggregates, nil
 }
 

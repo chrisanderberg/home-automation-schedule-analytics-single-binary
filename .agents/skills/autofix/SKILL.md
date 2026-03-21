@@ -42,7 +42,7 @@ Verify: `gh auth status`
 Before any autofix actions, search for `AGENTS.md` in the current repository and load applicable instructions.
 
 - Prefer `AGENTS.md` in the repository root if present.
-- Otherwise, search top-level directories first, then the rest of the repository, and use the first case-sensitive `AGENTS.md` match found.
+- Otherwise, search the immediate children of the repository root in lexicographic (ASCII) order, then recursively search the remaining files in lexicographic (ASCII) order, and use the first case-sensitive `AGENTS.md` match found.
 - If found, follow its build/lint/test/commit guidance throughout the run.
 - If not found, continue with default workflow.
 
@@ -147,6 +147,7 @@ For each "Fix" issue (CRITICAL first):
 
 **If "Modify":**
 - Inform user can make changes manually
+- Count the issue as deferred in the end-of-step summary unless the user later asks to apply a revised fix in the same run.
 - Move to next
 
 ### Step 7: Auto-Fix Mode
@@ -194,7 +195,14 @@ If all deferred (no commit): Skip this step.
 
 Post a success summary only when fixes were applied and a commit exists.
 Otherwise, post a neutral deferred/skipped summary and omit the commit field
-entirely.
+entirely. In manual review mode, "Modify" decisions are counted as deferred so
+the deferred/skipped totals remain unambiguous.
+
+The shell snippet below uses placeholder tokens such as `<commit-sha>`,
+`<pr-number>`, `<file-count>`, `<issue-count>`, and `<branch-name>` as examples.
+The AI agent or calling script must replace them at runtime, for example via
+environment-variable interpolation or template substitution, before executing
+the command.
 
 ```bash
 if [ -n "<commit-sha>" ]; then

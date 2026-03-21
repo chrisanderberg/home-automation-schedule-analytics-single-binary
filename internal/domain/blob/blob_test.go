@@ -124,3 +124,49 @@ func TestTransitionGroupIndexPanicsOnSelfTransition(t *testing.T) {
 	}()
 	_ = layout.TransitionGroupIndex(1, 1)
 }
+
+func TestHoldIndexPanicsOnInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	layout, err := blob.NewLayout(2)
+	if err != nil {
+		t.Fatalf("NewLayout() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		fn   func()
+	}{
+		{
+			name: "state",
+			fn: func() {
+				_ = layout.HoldIndex(2, 0, 0)
+			},
+		},
+		{
+			name: "clock",
+			fn: func() {
+				_ = layout.HoldIndex(0, blob.ClocksPerEvent, 0)
+			},
+		},
+		{
+			name: "bucket",
+			fn: func() {
+				_ = layout.HoldIndex(0, 0, blob.BucketsPerWeek)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("HoldIndex() expected panic for invalid %s", tc.name)
+				}
+			}()
+			tc.fn()
+		})
+	}
+}
