@@ -28,7 +28,11 @@ func run() error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	handler := server.New(nil, cfg)
+	handler, err := server.New(nil, cfg)
+	if err != nil {
+		return fmt.Errorf("server: %w", err)
+	}
+	defer handler.Close()
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
