@@ -46,24 +46,25 @@ func NewExporterWithDir(store *storage.Store, snapshotDir string) *Exporter {
 }
 
 func (e *Exporter) Export(ctx context.Context, name string) (storage.SnapshotRecord, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return storage.SnapshotRecord{}, fmt.Errorf("%w: snapshot name is required", ErrValidation)
+	name, err := validateSnapshotName(name)
+	if err != nil {
+		return storage.SnapshotRecord{}, err
 	}
 	if err := os.MkdirAll(e.snapshotDir, 0o755); err != nil {
 		return storage.SnapshotRecord{}, fmt.Errorf("create snapshot directory: %w", err)
 	}
 
-	path, reserved, err := reserveNextSnapshotPath(e.snapshotDir, name, e.now())
+	path, reserved, err := reserveSnapshotPath(e.snapshotDir, name, e.now)
 	if err != nil {
 		return storage.SnapshotRecord{}, err
 	}
-	if err := reserved.Close(); err != nil {
-		_ = os.Remove(path)
-		return storage.SnapshotRecord{}, fmt.Errorf("close reserved snapshot file: %w", err)
-	}
 	success := false
 	defer func() {
+		if reserved != nil {
+			if cerr := reserved.Close(); cerr != nil {
+				log.Printf("reserved snapshot file close error: path=%s err=%v", path, cerr)
+			}
+		}
 		if !success {
 			_ = os.Remove(path)
 		}
@@ -72,38 +73,67 @@ func (e *Exporter) Export(ctx context.Context, name string) (storage.SnapshotRec
 	if err != nil {
 		return storage.SnapshotRecord{}, fmt.Errorf("open snapshot db: %w", err)
 	}
-	defer func() {
-		if cerr := snapshotStore.Close(); cerr != nil {
-			log.Printf("snapshot store close error: path=%s err=%v", path, cerr)
-		}
-	}()
-
-	controls, err := e.store.ListControls(ctx)
-	if err != nil {
+	if err := populateSnapshot(ctx, snapshotStore, e.store, e.now); err != nil {
+		_ = snapshotStore.Close()
 		return storage.SnapshotRecord{}, err
 	}
-	for _, item := range controls {
-		if err := snapshotStore.UpsertControl(ctx, item.Control, e.now()); err != nil {
-			return storage.SnapshotRecord{}, err
-		}
+	if err := snapshotStore.Close(); err != nil {
+		log.Printf("snapshot store close error: path=%s err=%v", path, err)
+		return storage.SnapshotRecord{}, fmt.Errorf("close snapshot db: %w", err)
 	}
-
-	aggregates, err := e.store.ListAllAggregates(ctx)
-	if err != nil {
-		return storage.SnapshotRecord{}, err
-	}
-	for _, item := range aggregates {
-		if err := snapshotStore.UpsertAggregate(ctx, item); err != nil {
-			return storage.SnapshotRecord{}, err
-		}
-	}
-
-	record, err := e.store.CreateSnapshot(ctx, name, path, e.now())
+	record, err := createSnapshotRecord(ctx, e.store, name, path, e.now)
 	if err != nil {
 		return storage.SnapshotRecord{}, err
 	}
 	success = true
 	return record, nil
+}
+
+func validateSnapshotName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("%w: snapshot name is required", ErrValidation)
+	}
+	return name, nil
+}
+
+func reserveSnapshotPath(dir, name string, now func() time.Time) (path string, reserved *os.File, err error) {
+	path, reserved, err = reserveNextSnapshotPath(dir, name, now())
+	if err != nil {
+		return "", nil, err
+	}
+	if err := reserved.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", nil, fmt.Errorf("close reserved snapshot file: %w", err)
+	}
+	return path, nil, nil
+}
+
+func populateSnapshot(ctx context.Context, snapshotStore, srcStore *storage.Store, now func() time.Time) error {
+	controls, err := srcStore.ListControls(ctx)
+	if err != nil {
+		return err
+	}
+	for _, item := range controls {
+		if err := snapshotStore.UpsertControl(ctx, item.Control, now()); err != nil {
+			return err
+		}
+	}
+
+	aggregates, err := srcStore.ListAllAggregates(ctx)
+	if err != nil {
+		return err
+	}
+	for _, item := range aggregates {
+		if err := snapshotStore.UpsertAggregate(ctx, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createSnapshotRecord(ctx context.Context, store *storage.Store, name, path string, now func() time.Time) (storage.SnapshotRecord, error) {
+	return store.CreateSnapshot(ctx, name, path, now())
 }
 
 func snapshotFileName(name string, now time.Time) string {

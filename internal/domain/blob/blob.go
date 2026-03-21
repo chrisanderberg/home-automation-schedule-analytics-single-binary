@@ -11,6 +11,7 @@ const (
 	BucketsPerWeek = BucketsPerDay * DaysPerWeek
 	ClocksPerEvent = 5
 	GroupsPerState = ClocksPerEvent * BucketsPerWeek
+	MaxNumStates   = 64
 )
 
 type Layout struct {
@@ -18,8 +19,8 @@ type Layout struct {
 }
 
 func NewLayout(numStates int) (Layout, error) {
-	if numStates < 2 {
-		return Layout{}, fmt.Errorf("numStates must be >= 2")
+	if numStates < 2 || numStates > MaxNumStates {
+		return Layout{}, fmt.Errorf("numStates must be in range [2, %d]", MaxNumStates)
 	}
 	return Layout{NumStates: numStates}, nil
 }

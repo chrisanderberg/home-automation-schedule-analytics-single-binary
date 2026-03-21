@@ -105,7 +105,8 @@ gh pr create --title '<title>' --body '<body>'
 - Exit skill
 
 **API failures:**
-- Log error and continue
+- Abort the workflow when critical discovery/fetch calls fail, including PR lookup and unresolved thread retrieval
+- Log and continue only for non-critical write operations such as comment posting or reactions
 - Don't abort for comment posting failures
 
 **Getting repo info:**

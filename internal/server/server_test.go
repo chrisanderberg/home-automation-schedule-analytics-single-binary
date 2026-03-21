@@ -126,6 +126,42 @@ func TestInvalidRequestsReturnBadRequest(t *testing.T) {
 	if !strings.Contains(body, "snapshot name is required") {
 		t.Fatalf("bad snapshot response = %s", body)
 	}
+
+	resp := doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/controls/missing/heatmap?clock=bad", nil), http.StatusNotFound)
+	if strings.Contains(resp.Body.String(), "internal server error") {
+		t.Fatalf("unexpected server error body = %s", resp.Body.String())
+	}
+}
+
+func TestInvalidHeatmapParamsReturnBadRequest(t *testing.T) {
+	t.Parallel()
+
+	handler := newHandler(t)
+	postJSON(t, handler, "/api/v1/controls", map[string]any{
+		"controlId":   "lamp",
+		"controlType": "discrete",
+		"numStates":   2,
+	}, http.StatusCreated)
+
+	body := doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/controls/lamp/heatmap?clock=bad", nil), http.StatusBadRequest).Body.String()
+	if !strings.Contains(body, "invalid clock") {
+		t.Fatalf("bad clock response = %s", body)
+	}
+
+	body = doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/controls/lamp/heatmap?metric=bad", nil), http.StatusBadRequest).Body.String()
+	if !strings.Contains(body, "invalid metric") {
+		t.Fatalf("bad metric response = %s", body)
+	}
+}
+
+func TestRootRouteDoesNotMatchOtherPaths(t *testing.T) {
+	t.Parallel()
+
+	handler := newHandler(t)
+	resp := doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/not-found", nil), http.StatusNotFound)
+	if strings.Contains(resp.Body.String(), "Create Snapshot") || strings.Contains(resp.Body.String(), "Controls") {
+		t.Fatalf("unexpected root content for non-root path: %s", resp.Body.String())
+	}
 }
 
 func postJSON(t *testing.T, handler http.Handler, path string, payload map[string]any, wantStatus int) string {

@@ -102,7 +102,7 @@ Filter to:
 
 **Display in CodeRabbit's original order** (already severity-ordered):
 
-```
+```text
 CodeRabbit Issues for PR #123: [PR Title]
 
 | # | Severity | Issue Title | Location & Details | Type | Action |
@@ -192,8 +192,13 @@ If all deferred (no commit): Skip this step.
 
 **REQUIRED after all issues reviewed:**
 
+Post a success summary only when fixes were applied and a commit exists. If no
+fixes were applied, post a neutral deferred/skipped summary and omit the commit
+field entirely.
+
 ```bash
-gh pr comment <pr-number> --body "$(cat <<'EOF'
+if [ -n "<commit-sha>" ]; then
+  gh pr comment <pr-number> --body "$(cat <<'EOF'
 ## Fixes Applied Successfully
 
 Fixed <file-count> file(s) based on <issue-count> unresolved review comment(s).
@@ -208,6 +213,15 @@ The latest autofix changes are on the `<branch-name>` branch.
 
 EOF
 )"
+else
+  gh pr comment <pr-number> --body "$(cat <<'EOF'
+## No Fixes Applied
+
+No changes were committed. <issue-count> issue(s) were deferred or skipped after review.
+
+EOF
+)"
+fi
 ```
 
 See [github.md § 3](./github.md#3-post-summary-comment) for details.

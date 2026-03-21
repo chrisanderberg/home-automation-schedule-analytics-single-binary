@@ -100,7 +100,7 @@ func (h *Handler) routes() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/holding-intervals", h.handleHoldingInterval)
 	mux.HandleFunc("POST /api/v1/transitions", h.handleTransition)
 	mux.HandleFunc("POST /api/v1/snapshots", h.handleSnapshotAPI)
-	mux.HandleFunc("GET /", h.handleHome)
+	mux.HandleFunc("GET /{$}", h.handleHome)
 	mux.HandleFunc("GET /controls/{controlID}", h.handleControlPage)
 	mux.HandleFunc("GET /controls/{controlID}/heatmap", h.handleHeatmapPanel)
 	mux.HandleFunc("GET /snapshots", h.handleSnapshotsPage)
@@ -193,6 +193,10 @@ func (h *Handler) handleControlPage(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		if errors.Is(err, ingest.ErrValidation) {
+			writeValidation(w, err)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -205,6 +209,10 @@ func (h *Handler) handleHeatmapPanel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
+			return
+		}
+		if errors.Is(err, ingest.ErrValidation) {
+			writeValidation(w, err)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err)
@@ -252,11 +260,19 @@ func (h *Handler) controlPageData(r *http.Request, controlID string) (views.Cont
 	if err != nil {
 		return views.ControlPageData{}, err
 	}
+	clockName, err := normalizeClock(r.URL.Query().Get("clock"))
+	if err != nil {
+		return views.ControlPageData{}, err
+	}
+	metricName, err := normalizeMetric(r.URL.Query().Get("metric"))
+	if err != nil {
+		return views.ControlPageData{}, err
+	}
 	heatmap := views.HeatmapData{
 		ControlID:      controlID,
 		QuarterOptions: quarters,
-		Clock:          defaultString(r.URL.Query().Get("clock"), "utc"),
-		Metric:         defaultString(r.URL.Query().Get("metric"), "holding"),
+		Clock:          clockName,
+		Metric:         metricName,
 	}
 	if len(quarters) == 0 {
 		return views.ControlPageData{Control: c, Heatmap: heatmap}, nil
@@ -346,6 +362,24 @@ func parseClock(name string) (int, error) {
 	}
 }
 
+func normalizeClock(value string) (string, error) {
+	name := defaultString(value, "utc")
+	if _, err := parseClock(name); err != nil {
+		return "", fmt.Errorf("%w: invalid clock %q", ingest.ErrValidation, value)
+	}
+	return name, nil
+}
+
+func normalizeMetric(value string) (string, error) {
+	name := defaultString(value, "holding")
+	switch name {
+	case "holding", "transition":
+		return name, nil
+	default:
+		return "", fmt.Errorf("%w: invalid metric %q", ingest.ErrValidation, value)
+	}
+}
+
 func parseQuarter(raw string) (int, error) {
 	return strconv.Atoi(raw)
 }
@@ -367,7 +401,12 @@ func writeValidation(w http.ResponseWriter, err error) {
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	log.Printf("http error: status=%d err=%v", status, err)
+	message := err.Error()
+	if status >= 500 {
+		message = http.StatusText(http.StatusInternalServerError)
+	}
+	writeJSON(w, status, map[string]string{"error": message})
 }
 
 func renderComponent(w http.ResponseWriter, r *http.Request, status int, component templ.Component) {

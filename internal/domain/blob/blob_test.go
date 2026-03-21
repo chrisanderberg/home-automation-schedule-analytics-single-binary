@@ -88,3 +88,11 @@ func TestAccumulatorRejectsSelfTransition(t *testing.T) {
 		t.Fatal("AddTransition() expected error for self-transition")
 	}
 }
+
+func TestNewLayoutRejectsTooManyStates(t *testing.T) {
+	t.Parallel()
+
+	if _, err := blob.NewLayout(blob.MaxNumStates + 1); err == nil {
+		t.Fatal("NewLayout() expected error for too many states")
+	}
+}
