@@ -42,6 +42,10 @@ type Store struct {
 	db *sql.DB
 }
 
+type queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
@@ -146,7 +150,11 @@ func (s *Store) GetControl(ctx context.Context, controlID string) (control.Contr
 }
 
 func (s *Store) ListControls(ctx context.Context) ([]ControlSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return listControls(ctx, s.db)
+}
+
+func listControls(ctx context.Context, q queryer) ([]ControlSummary, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT
 			c.control_id,
 			c.control_type,
@@ -340,7 +348,11 @@ func (s *Store) ListQuarterIndices(ctx context.Context, controlID string) ([]int
 }
 
 func (s *Store) ListAllAggregates(ctx context.Context) ([]AggregateRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return listAllAggregates(ctx, s.db)
+}
+
+func listAllAggregates(ctx context.Context, q queryer) ([]AggregateRecord, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT control_id, quarter_index, num_states, data, updated_at_ms
 		FROM aggregates
 		ORDER BY control_id, quarter_index
@@ -359,6 +371,31 @@ func (s *Store) ListAllAggregates(ctx context.Context) ([]AggregateRecord, error
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// ExportSnapshotData loads controls and aggregates from a single read transaction
+// so callers can copy a point-in-time snapshot without mixing concurrent commits.
+func (s *Store) ExportSnapshotData(ctx context.Context) ([]ControlSummary, []AggregateRecord, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin read tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	controls, err := listControls(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	aggregates, err := listAllAggregates(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("commit read tx: %w", err)
+	}
+	return controls, aggregates, nil
 }
 
 func (s *Store) CreateSnapshot(ctx context.Context, name, path string, now time.Time) (SnapshotRecord, error) {

@@ -97,20 +97,14 @@ func validateSnapshotName(name string) (string, error) {
 	return name, nil
 }
 
+// reserveSnapshotPath returns an exclusive reservation for the destination path.
+// The caller owns the returned file handle and must close it.
 func reserveSnapshotPath(dir, name string, now func() time.Time) (path string, reserved *os.File, err error) {
-	path, reserved, err = reserveNextSnapshotPath(dir, name, now())
-	if err != nil {
-		return "", nil, err
-	}
-	if err := reserved.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", nil, fmt.Errorf("close reserved snapshot file: %w", err)
-	}
-	return path, nil, nil
+	return reserveNextSnapshotPath(dir, name, now())
 }
 
 func populateSnapshot(ctx context.Context, snapshotStore, srcStore *storage.Store, now func() time.Time) error {
-	controls, err := srcStore.ListControls(ctx)
+	controls, aggregates, err := srcStore.ExportSnapshotData(ctx)
 	if err != nil {
 		return err
 	}
@@ -118,11 +112,6 @@ func populateSnapshot(ctx context.Context, snapshotStore, srcStore *storage.Stor
 		if err := snapshotStore.UpsertControl(ctx, item.Control, now()); err != nil {
 			return err
 		}
-	}
-
-	aggregates, err := srcStore.ListAllAggregates(ctx)
-	if err != nil {
-		return err
 	}
 	for _, item := range aggregates {
 		if err := snapshotStore.UpsertAggregate(ctx, item); err != nil {

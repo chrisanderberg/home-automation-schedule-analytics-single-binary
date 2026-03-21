@@ -66,6 +66,10 @@ func TestAPIFlow(t *testing.T) {
 	if !strings.Contains(body, "daily-export") {
 		t.Fatalf("snapshot response = %s", body)
 	}
+	snapshotsResp := doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/snapshots", nil), http.StatusOK)
+	if !strings.Contains(snapshotsResp.Body.String(), "daily-export") {
+		t.Fatalf("snapshots page missing persisted snapshot: %s", snapshotsResp.Body.String())
+	}
 }
 
 func TestHTMLPagesAndPartials(t *testing.T) {
@@ -100,9 +104,16 @@ func TestHTMLPagesAndPartials(t *testing.T) {
 		t.Fatalf("heatmap partial missing values: %s", partialResp.Body.String())
 	}
 
+	postJSON(t, handler, "/api/v1/snapshots", map[string]any{
+		"name": "daily-export",
+	}, http.StatusCreated)
+
 	snapshotsResp := doRequest(t, handler, httptest.NewRequest(http.MethodGet, "/snapshots", nil), http.StatusOK)
 	if !strings.Contains(snapshotsResp.Body.String(), "Create Snapshot") {
 		t.Fatalf("snapshots page missing form: %s", snapshotsResp.Body.String())
+	}
+	if !strings.Contains(snapshotsResp.Body.String(), "daily-export") {
+		t.Fatalf("snapshots page missing persisted snapshot: %s", snapshotsResp.Body.String())
 	}
 }
 

@@ -14,23 +14,32 @@ const (
 	MaxNumStates   = 64
 )
 
+// Layout describes the validated blob geometry for one control. It must be
+// constructed through NewLayout so numStates stays within [2, MaxNumStates].
 type Layout struct {
-	NumStates int
+	numStates int
 }
 
+// NewLayout validates the blob geometry invariant: numStates must stay within
+// [2, MaxNumStates] for all index math and byte sizing helpers.
 func NewLayout(numStates int) (Layout, error) {
 	if numStates < 2 || numStates > MaxNumStates {
 		return Layout{}, fmt.Errorf("numStates must be in range [2, %d]", MaxNumStates)
 	}
-	return Layout{NumStates: numStates}, nil
+	return Layout{numStates: numStates}, nil
+}
+
+// NumStates returns the validated state count used by this layout.
+func (l Layout) NumStates() int {
+	return l.numStates
 }
 
 func (l Layout) holdWordCount() int {
-	return l.NumStates * GroupsPerState
+	return l.numStates * GroupsPerState
 }
 
 func (l Layout) transitionWordCount() int {
-	return l.NumStates * (l.NumStates - 1) * GroupsPerState
+	return l.numStates * (l.numStates - 1) * GroupsPerState
 }
 
 func (l Layout) WordCount() int {
@@ -47,18 +56,35 @@ func (l Layout) HoldIndex(state, clock, bucket int) int {
 
 // TransitionGroupIndex flattens transitions by from-state while skipping the
 // self-transition slot in each group so the compacted list stays dense.
+// It panics if the layout is invalid, a state index is out of range, or a
+// self-transition is passed because that slot is intentionally excluded.
 func (l Layout) TransitionGroupIndex(from, to int) int {
+	l.mustValidate()
+	l.mustValidateState(from)
+	l.mustValidateState(to)
+	if from == to {
+		panic("blob: self-transition index is invalid")
+	}
 	offset := to
 	if to > from {
 		offset--
 	}
-	return from*(l.NumStates-1) + offset
+	return from*(l.numStates-1) + offset
 }
 
+// TransitionIndex returns the flattened offset for a non-self transition.
+// It panics when the layout is invalid or the transition/clock/bucket inputs do
+// not satisfy the index invariants documented on Layout and TransitionGroupIndex.
 func (l Layout) TransitionIndex(from, to, clock, bucket int) int {
+	if err := validateClockBucket(clock, bucket); err != nil {
+		panic("blob: invalid transition clock or bucket")
+	}
 	return l.holdWordCount() + (l.TransitionGroupIndex(from, to) * GroupsPerState) + (clock * BucketsPerWeek) + bucket
 }
 
+// Accumulator stores counters for a validated Layout. Callers must add
+// transitions with distinct from/to states because self-transitions are not
+// represented in the compact transition section.
 type Accumulator struct {
 	layout Layout
 	words  []uint64
@@ -173,10 +199,22 @@ func (a *Accumulator) Bytes() []byte {
 }
 
 func (a *Accumulator) validateState(state int) error {
-	if state < 0 || state >= a.layout.NumStates {
+	if state < 0 || state >= a.layout.numStates {
 		return fmt.Errorf("state out of range")
 	}
 	return nil
+}
+
+func (l Layout) mustValidate() {
+	if l.numStates < 2 || l.numStates > MaxNumStates {
+		panic("blob: invalid layout state count")
+	}
+}
+
+func (l Layout) mustValidateState(state int) {
+	if state < 0 || state >= l.numStates {
+		panic("blob: state out of range")
+	}
 }
 
 func validateClockBucket(clock, bucket int) error {

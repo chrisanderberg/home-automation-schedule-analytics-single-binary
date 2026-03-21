@@ -56,7 +56,7 @@ Check: `git status` + check for unpushed commits
 
 **If unpushed commits:**
 - Warn: "⚠️ N unpushed commits. CodeRabbit hasn't reviewed them"
-- Ask: "Push now?" → If yes: `git push`, inform "CodeRabbit will review in ~5 min", EXIT skill
+- Ask: "Push now?" → If yes: `git push`, inform "CodeRabbit will review shortly (typically within a few minutes)", EXIT skill
 
 **Otherwise:** Proceed to Step 2
 
@@ -66,7 +66,7 @@ Check: `git status` + check for unpushed commits
 gh pr list --head $(git branch --show-current) --state open --json number,title
 ```
 
-**If no PR:** Ask "Create PR?" → If yes: create PR (see [github.md § 5](./github.md#5-create-pr-if-needed)), inform "Run skill again in ~5 min", EXIT
+**If no PR:** Ask "Create PR?" → If yes: create PR (see [github.md § 5](./github.md#5-create-pr-if-needed)), inform "Run the skill again shortly after CodeRabbit has had time to review", EXIT
 
 ### Step 3: Fetch Unresolved CodeRabbit Threads
 
@@ -190,11 +190,11 @@ If all deferred (no commit): Skip this step.
 
 ### Step 11: Post Summary
 
-**REQUIRED after all issues reviewed:**
+**CONDITIONAL after all issues reviewed:**
 
-Post a success summary only when fixes were applied and a commit exists. If no
-fixes were applied, post a neutral deferred/skipped summary and omit the commit
-field entirely.
+Post a success summary only when fixes were applied and a commit exists.
+Otherwise, post a neutral deferred/skipped summary and omit the commit field
+entirely.
 
 ```bash
 if [ -n "<commit-sha>" ]; then
@@ -226,7 +226,7 @@ fi
 
 See [github.md § 3](./github.md#3-post-summary-comment) for details.
 
-Optionally react to CodeRabbit's main comment with 👍.
+Optionally react with 👍 to the PR root comment created by CodeRabbit.
 
 ## Key Notes
 

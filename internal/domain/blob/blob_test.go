@@ -25,6 +25,18 @@ func TestLayoutMatchesSpec(t *testing.T) {
 	}
 }
 
+func TestLayoutExposesValidatedStateCount(t *testing.T) {
+	t.Parallel()
+
+	layout, err := blob.NewLayout(4)
+	if err != nil {
+		t.Fatalf("NewLayout() error = %v", err)
+	}
+	if got := layout.NumStates(); got != 4 {
+		t.Fatalf("NumStates() = %d, want 4", got)
+	}
+}
+
 func TestAccumulatorRoundTripAndMerge(t *testing.T) {
 	t.Parallel()
 
@@ -95,4 +107,20 @@ func TestNewLayoutRejectsTooManyStates(t *testing.T) {
 	if _, err := blob.NewLayout(blob.MaxNumStates + 1); err == nil {
 		t.Fatal("NewLayout() expected error for too many states")
 	}
+}
+
+func TestTransitionGroupIndexPanicsOnSelfTransition(t *testing.T) {
+	t.Parallel()
+
+	layout, err := blob.NewLayout(2)
+	if err != nil {
+		t.Fatalf("NewLayout() error = %v", err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("TransitionGroupIndex() expected panic for self-transition")
+		}
+	}()
+	_ = layout.TransitionGroupIndex(1, 1)
 }

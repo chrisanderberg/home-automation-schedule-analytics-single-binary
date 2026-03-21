@@ -139,3 +139,46 @@ func TestStoreSnapshots(t *testing.T) {
 		t.Fatalf("ListSnapshots() = %+v", items)
 	}
 }
+
+func TestStoreExportSnapshotData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStore(t)
+	now := time.Date(2026, time.March, 20, 12, 0, 0, 0, time.UTC)
+	if err := store.UpsertControl(ctx, control.Control{
+		ID:        "lamp",
+		Type:      control.TypeDiscrete,
+		NumStates: 2,
+	}, now); err != nil {
+		t.Fatalf("UpsertControl() error = %v", err)
+	}
+
+	acc, err := blob.NewAccumulator(2)
+	if err != nil {
+		t.Fatalf("NewAccumulator() error = %v", err)
+	}
+	if err := acc.AddHolding(1, 0, 10, 2500); err != nil {
+		t.Fatalf("AddHolding() error = %v", err)
+	}
+	if err := store.UpsertAggregate(ctx, storage.AggregateRecord{
+		ControlID:    "lamp",
+		QuarterIndex: 220,
+		NumStates:    2,
+		Data:         acc.Bytes(),
+		UpdatedAtMs:  now.UnixMilli(),
+	}); err != nil {
+		t.Fatalf("UpsertAggregate() error = %v", err)
+	}
+
+	controls, aggregates, err := store.ExportSnapshotData(ctx)
+	if err != nil {
+		t.Fatalf("ExportSnapshotData() error = %v", err)
+	}
+	if len(controls) != 1 || controls[0].Control.ID != "lamp" {
+		t.Fatalf("controls = %+v", controls)
+	}
+	if len(aggregates) != 1 || aggregates[0].ControlID != "lamp" {
+		t.Fatalf("aggregates = %+v", aggregates)
+	}
+}
