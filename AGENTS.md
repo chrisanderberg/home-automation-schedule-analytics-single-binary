@@ -1,37 +1,49 @@
 # AGENTS.md
 
-## Authority and scope
-- This file is the single source of truth for how to work in this repo.
-- Canonical planning docs live in the sibling `../planning/` workspace and are not committed in this repo.
-- Domain spec is canonical in external path `../planning/single-bin/spec.md`.
-- Plan is canonical in external path `../planning/single-bin/plan.md`.
-- Assumptions are canonical in external path `../planning/single-bin/assumptions.md`.
-- Do not introduce new semantics that contradict the domain spec.
+## Purpose
+- This file defines how agents should operate in this worktree.
+- Read `PROJECT.md` for project context and goals.
+- Read `REQUIREMENTS.md` for the current implementation contract.
 
-## Milestone execution rule (two-step)
-Each milestone must be implemented in two steps:
+## Source of truth
+- `PROJECT.md` and `REQUIREMENTS.md` together are the effective project spec.
+- If `PROJECT.md` and `REQUIREMENTS.md` conflict, `REQUIREMENTS.md` wins for implementation details and constraints.
+- `REQUIREMENTS.md` contains both the active requirements and the rationale-bearing design guidance that used to live in separate decision records.
 
-1. **Scaffold + tests**
-   - Create file structure and stubs.
-   - Add tests that define correct behavior.
-   - Ensure `go test ./...` runs (tests may fail if stubs are TODO).
+## Requirement handling
+- Hard requirements are binding. Do not violate them unless the human explicitly changes or waives them.
+- Soft requirements are preferred guidance. Follow them by default, but you may deviate when there is a clear task-specific reason.
+- Agents may add or refine soft requirements when they discover reusable guidance during implementation.
+- Humans may add or revise hard and soft requirements.
+- Agents must not silently create, remove, or weaken hard requirements.
+- If a soft requirement appears important enough to become mandatory, add it to the candidate promotion section in `REQUIREMENTS.md` instead of promoting it directly.
+- Durable rationale should be recorded directly with the relevant soft requirement in `REQUIREMENTS.md`, not in a separate decision log.
+- Do not use `REQUIREMENTS.md` as a scratchpad or status log. Add only reusable guidance or binding constraints.
+- When requirements emerge from prototypes or examples, capture them in `REQUIREMENTS.md` in a reusable form.
+- Keep `REQUIREMENTS.md` concise and reviewable. Do not add task-specific notes that will not matter to future work.
 
-2. **Implementation**
-   - Fill in TODOs until tests pass.
-   - Ensure `go test ./...` passes before completing the milestone.
+## Execution rules
+- If something is not specified, do not guess silently. Surface the gap or make the narrowest safe assumption.
+- Prefer parameterization over hardcoding when requirements are still evolving.
+- Keep code structure reviewable. Split large functions into focused helpers.
+- Add brief comments only where intent or invariants are not obvious from the code.
 
-## Milestone Definition of Done
-Before marking a milestone complete:
+## Milestone workflow
+1. Scaffold plus tests.
+2. Implementation.
+3. Code Review Loop.
+
+For each milestone:
+- Create file structure and tests that define expected behavior.
+- Ensure `go test ./...` runs during scaffolding, even if some tests fail because implementation is pending.
+- Complete implementation until tests pass.
+- Run code review tools, fix issues, and rerun until code review comes back clean.
+
+## Definition of done
 - `go test ./...` passes.
-- No placeholder TODO sentinels remain in production code unless explicitly
-  approved.
-- Non-obvious logic has comments explaining intent/invariants.
-- Code structure is reviewable (large functions split into focused helpers).
-
-## Assumptions and TBD handling
-- If something is not specified, do not guess silently.
-- Prefer parameterization when possible.
-- Record any necessary assumptions in `DECISIONS.md`.
+- No placeholder TODO sentinels remain in production code unless explicitly approved.
+- Non-obvious logic has comments explaining intent or invariants.
+- Any new reusable implementation guidance discovered during the task is added to the soft requirements in `REQUIREMENTS.md`.
 
 ## Commands
 
@@ -41,9 +53,3 @@ make build
 make test
 make run
 ```
-
-## Canonical documents
-- Domain spec: external path `../planning/single-bin/spec.md`
-- Plan: external path `../planning/single-bin/plan.md`
-- Assumptions: external path `../planning/single-bin/assumptions.md`
-- Decisions: `DECISIONS.md`
