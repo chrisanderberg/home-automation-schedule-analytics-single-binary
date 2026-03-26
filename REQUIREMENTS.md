@@ -22,7 +22,7 @@ partially defined upfront and extended as development proceeds.
 - The aggregate domain model shall support five clock interpretations:
   UTC, local time, mean solar time, apparent solar time, and unequal hours.
 - Aggregates shall be keyed by control ID, model ID, and UTC quarter index.
-- Local-time bucket splitting should follow exact DST fold semantics by using
+- Local-time bucket splitting shall follow exact DST fold semantics by using
   the earliest UTC instant that changes the local bucket, even when a repeated
   local hour causes bucket order to revisit an earlier wall-clock time.
   Rationale: local bucketing is defined by actual local wall time, not by a

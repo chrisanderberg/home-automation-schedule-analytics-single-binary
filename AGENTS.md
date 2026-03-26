@@ -23,7 +23,7 @@
 - Keep `REQUIREMENTS.md` concise and reviewable. Do not add task-specific notes that will not matter to future work.
 
 ## Execution rules
-- If something is not specified, do not guess silently. Surface the gap or make the narrowest safe assumption.
+- If something is not specified, do not guess silently. Surface the gap or make the narrowest safe assumption, and record that assumption in `REQUIREMENTS.md` under `Open questions` or an `Assumptions` section if one is needed.
 - Prefer parameterization over hardcoding when requirements are still evolving.
 - Keep code structure reviewable. Split large functions into focused helpers.
 - Add brief comments only where intent or invariants are not obvious from the code.

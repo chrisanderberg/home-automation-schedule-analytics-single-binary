@@ -4,8 +4,8 @@
 This project is a single-binary Go application for analyzing home automation
 schedule data. It combines ingestion, aggregation, persistence, API endpoints,
 and UI delivery in one executable. The analytics layer is centered on
-continuous-time behavior, including continuous-time Markov chain style modeling
-of state transitions and kernel density estimation (KDE) style smoothing where
+continuous-time behavior, including continuous-time Markov-chain-style modeling
+of state transitions and kernel density estimation (KDE)-style smoothing where
 useful for understanding schedule preferences.
 
 The domain model is organized around controls, states, model IDs, holding
@@ -56,4 +56,4 @@ collapsing everything into a single wall-clock view.
 - Add context here when it helps future agents understand why the project
   exists or what broad direction it is taking.
 - Keep domain-defining concepts here when they describe the analytical shape of
-  the product, even if the exact implementation details evolve over time.
+  the product, even if the exact implementation details evolve.
