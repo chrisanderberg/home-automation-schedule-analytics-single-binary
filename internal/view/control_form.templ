@@ -1,0 +1,126 @@
+package view
+
+import "fmt"
+
+type ControlFormData struct {
+	ControlID   string
+	ControlType string
+	NumStates   int
+	StateLabels []string
+}
+
+type ControlFormPageData struct {
+	Title            string
+	Heading          string
+	Action           string
+	SubmitLabel      string
+	CancelURL        string
+	ExistingControl  string
+	LockedStructure  bool
+	StructureHint    string
+	Errors           []string
+	Form             ControlFormData
+}
+
+func controlTypeSelected(current, value string) bool {
+	return current == value
+}
+
+func controlTypeIsSlider(current string) bool {
+	return current == "sliders"
+}
+
+func controlStateIndexes() []int {
+	return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+}
+
+func controlStateEnabled(numStates, idx int) bool {
+	return idx < numStates
+}
+
+func controlStateLabel(labels []string, idx int) string {
+	if idx < len(labels) {
+		return labels[idx]
+	}
+	return ""
+}
+
+// ControlFormPage renders the create and edit control form used by the UI.
+templ ControlFormPage(data ControlFormPageData) {
+	@Layout(data.Title) {
+		<div class="page-header">
+			<div>
+				<h1>{ data.Heading }</h1>
+				<p class="page-subtitle">Use the UI to configure control metadata and labels.</p>
+			</div>
+		</div>
+		@ControlForm(data)
+	}
+}
+
+templ ControlForm(data ControlFormPageData) {
+	if len(data.Errors) > 0 {
+		<div class="form-errors">
+			for _, err := range data.Errors {
+				<p>{ err }</p>
+			}
+		</div>
+	}
+	<form method="post" action={ templ.SafeURL(data.Action) } class="form-card control-config-form">
+		<div class="form-grid">
+			<label class="form-field">
+				<span>Control ID</span>
+				<input type="text" name="controlId" value={ data.Form.ControlID } required/>
+			</label>
+			<label class="form-field">
+				<span>Control type</span>
+				if data.LockedStructure {
+					<input type="hidden" name="controlType" value={ data.Form.ControlType }/>
+					<input type="text" value={ data.Form.ControlType } readonly/>
+				} else {
+					<select name="controlType">
+						<option value="radio buttons" selected?={ controlTypeSelected(data.Form.ControlType, "radio buttons") }>radio buttons</option>
+						<option value="sliders" selected?={ controlTypeSelected(data.Form.ControlType, "sliders") }>sliders</option>
+					</select>
+				}
+			</label>
+			<label class="form-field">
+				<span>Possible states</span>
+				if data.LockedStructure {
+					<input type="hidden" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) }/>
+					<input type="text" value={ fmt.Sprintf("%d", data.Form.NumStates) } readonly/>
+				} else {
+					<input type="number" min="2" max="10" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) } required/>
+				}
+			</label>
+		</div>
+		<p class="form-hint">Radio buttons can use 2 to 10 states. Sliders always use 6 states.</p>
+		if data.StructureHint != "" {
+			<p class="form-hint">{ data.StructureHint }</p>
+		}
+		<div class="state-grid">
+			for _, idx := range controlStateIndexes() {
+				<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
+					<span>{ fmt.Sprintf("State %d label", idx) }</span>
+					<input
+						type="text"
+						name="stateLabel"
+						value={ controlStateLabel(data.Form.StateLabels, idx) }
+						disabled?={ !controlStateEnabled(data.Form.NumStates, idx) }
+					/>
+				</label>
+			}
+		</div>
+		<div class="form-actions">
+			<button type="submit" class="btn">{ data.SubmitLabel }</button>
+			<a href={ templ.SafeURL(data.CancelURL) } class="btn btn-secondary">Cancel</a>
+		</div>
+	</form>
+}
+
+func stateFieldClass(enabled bool) string {
+	if enabled {
+		return "form-field state-field"
+	}
+	return "form-field state-field state-field-disabled"
+}

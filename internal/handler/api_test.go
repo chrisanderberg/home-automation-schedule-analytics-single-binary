@@ -67,7 +67,7 @@ func TestHealthReturns200(t *testing.T) {
 // TestControlsAccepted verifies valid control payloads are accepted and persisted.
 func TestControlsAccepted(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "light", "controlType": "discrete", "numStates": 3}
+	body := map[string]any{"controlId": "light", "controlType": "radio buttons", "numStates": 3}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
@@ -85,7 +85,7 @@ func TestControlsAccepted(t *testing.T) {
 // TestControlsRejectsMissingFields verifies controls requests fail when required fields are missing.
 func TestControlsRejectsMissingFields(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlType": "discrete", "numStates": 3}
+	body := map[string]any{"controlType": "radio buttons", "numStates": 3}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -104,7 +104,7 @@ func TestControlsRejectEmptyBody(t *testing.T) {
 // TestControlsRejectTrailingJSON verifies the API rejects multiple concatenated JSON values.
 func TestControlsRejectTrailingJSON(t *testing.T) {
 	db := openTestDB(t)
-	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"discrete","numStates":3}{"extra":true}`)
+	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"radio buttons","numStates":3}{"extra":true}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -113,7 +113,7 @@ func TestControlsRejectTrailingJSON(t *testing.T) {
 // TestControlsAcceptSingleJSONValueWithTrailingWhitespace verifies trailing whitespace does not invalidate a single JSON payload.
 func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 	db := openTestDB(t)
-	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"discrete\",\"numStates\":3\n}\n")
+	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"radio buttons\",\"numStates\":3\n}\n")
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
@@ -122,7 +122,7 @@ func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 // TestControlsRejectsInvalidNumStates verifies controls validation enforces the supported state range.
 func TestControlsRejectsInvalidNumStates(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 1}
+	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": 1}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -142,17 +142,17 @@ func TestControlsRejectsBadControlType(t *testing.T) {
 // TestControlsRejectsStateLabelsMismatch verifies provided state labels must match the configured state count.
 func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 2, "stateLabels": []string{"a"}}
+	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"a"}}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
 
-// TestControlsRejectsSliderWithNonSixStates verifies slider controls keep their fixed six-state contract.
+// TestControlsRejectsSlidersWithNonSixStates verifies sliders keep their fixed six-state contract.
 func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "slider", "controlType": "slider", "numStates": 5}
+	body := map[string]any{"controlId": "slider", "controlType": "sliders", "numStates": 5}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -163,7 +163,7 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 func TestHoldingAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestHoldingRejectsUnknownControl(t *testing.T) {
 func TestTransitionAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestTransitionAccepted(t *testing.T) {
 func TestTransitionRejectsSelfTransition(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}

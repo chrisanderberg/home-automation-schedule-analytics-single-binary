@@ -8,6 +8,13 @@ CREATE TABLE IF NOT EXISTS controls (
   state_labels TEXT
 );
 
+CREATE TABLE IF NOT EXISTS models (
+  control_id TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  PRIMARY KEY (control_id, model_id),
+  FOREIGN KEY (control_id) REFERENCES controls(control_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS aggregates (
   control_id TEXT NOT NULL,
   model_id TEXT NOT NULL,
@@ -16,4 +23,5 @@ CREATE TABLE IF NOT EXISTS aggregates (
   PRIMARY KEY (control_id, model_id, quarter_index),
   FOREIGN KEY (control_id) REFERENCES controls(control_id) ON DELETE CASCADE
 );
+
 `

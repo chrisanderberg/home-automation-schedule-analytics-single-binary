@@ -18,7 +18,7 @@ func TestHoldingIngestSingleBucketUTC(t *testing.T) {
 	cfg := Config{TimeZone: "UTC", Latitude: 37.7749, Longitude: -122.4194}
 
 	if err := storage.UpsertControl(ctx, db, storage.Control{
-		ControlID: "light", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "light", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestTransitionIngestSingleBucketUTC(t *testing.T) {
 	cfg := Config{TimeZone: "UTC", Latitude: 0, Longitude: 0}
 
 	if err := storage.UpsertControl(ctx, db, storage.Control{
-		ControlID: "mode", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestIngestValidationErrors(t *testing.T) {
 	}
 
 	if err := storage.UpsertControl(ctx, db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}

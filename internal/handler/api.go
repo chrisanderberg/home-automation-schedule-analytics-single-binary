@@ -37,32 +37,15 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if req.ControlID == "" {
-			writeError(w, http.StatusBadRequest, "invalid controlId")
-			return
-		}
-		if req.NumStates < 2 || req.NumStates > 10 {
-			writeError(w, http.StatusBadRequest, "invalid numStates")
-			return
-		}
-		if req.ControlType != string(storage.ControlTypeDiscrete) && req.ControlType != string(storage.ControlTypeSlider) {
-			writeError(w, http.StatusBadRequest, "invalid controlType")
-			return
-		}
-		if req.ControlType == string(storage.ControlTypeSlider) && req.NumStates != 6 {
-			writeError(w, http.StatusBadRequest, "slider controls must use exactly 6 states")
-			return
-		}
-		if len(req.StateLabels) > 0 && len(req.StateLabels) != req.NumStates {
-			writeError(w, http.StatusBadRequest, "stateLabels must have exactly numStates elements when provided")
-			return
-		}
-
-		control := storage.Control{
+		control, errMsg := validateControlInput(controlInput{
 			ControlID:   req.ControlID,
-			ControlType: storage.ControlType(req.ControlType),
+			ControlType: req.ControlType,
 			NumStates:   req.NumStates,
 			StateLabels: req.StateLabels,
+		})
+		if errMsg != "" {
+			writeError(w, http.StatusBadRequest, errMsg)
+			return
 		}
 		if err := storage.UpsertControl(r.Context(), db, control); err != nil {
 			log.Printf("handleControls upsert failed: %v", err)

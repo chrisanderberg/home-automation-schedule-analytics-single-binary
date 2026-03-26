@@ -3,8 +3,8 @@ package storage
 type ControlType string
 
 const (
-	ControlTypeDiscrete ControlType = "discrete"
-	ControlTypeSlider   ControlType = "slider"
+	ControlTypeRadioButtons ControlType = "radio buttons"
+	ControlTypeSliders      ControlType = "sliders"
 )
 
 type Control struct {
@@ -12,6 +12,11 @@ type Control struct {
 	ControlType ControlType
 	NumStates   int
 	StateLabels []string
+}
+
+type Model struct {
+	ControlID string
+	ModelID   string
 }
 
 type AggregateKey struct {

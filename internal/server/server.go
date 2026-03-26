@@ -29,7 +29,12 @@ func New(cfg Config) http.Handler {
 
 	// HTML pages
 	mux.HandleFunc("GET /{$}", handler.HandleHomePage(cfg.DB))
+	mux.HandleFunc("GET /controls/new", handler.HandleNewControlPage())
+	mux.HandleFunc("POST /controls/new", handler.HandleCreateControl(cfg.DB))
 	mux.HandleFunc("GET /controls/{controlID}", handler.HandleControlPage(cfg.DB))
+	mux.HandleFunc("POST /controls/{controlID}", handler.HandleUpdateControl(cfg.DB))
+	mux.HandleFunc("POST /controls/{controlID}/models/new", handler.HandleCreateModel(cfg.DB))
+	mux.HandleFunc("POST /controls/{controlID}/models/{modelID}", handler.HandleUpdateModel(cfg.DB))
 	mux.HandleFunc("GET /snapshots", handler.HandleSnapshotPage(cfg.SnapshotDir))
 	mux.HandleFunc("GET /partials/heatmap", handler.HandleHeatmapPartial(cfg.DB))
 

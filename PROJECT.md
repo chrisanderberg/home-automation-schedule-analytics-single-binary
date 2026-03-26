@@ -13,6 +13,12 @@ intervals, and user-initiated transitions. Aggregates are time-based and retain
 multiple clock interpretations of the same underlying behavior instead of
 collapsing everything into a single wall-clock view.
 
+In this project, a model ID is not just an arbitrary partition key. It
+identifies a model-specific analytical partition for a control. Different
+models may produce different behavior for the same control, and the analytics
+are intended to preserve that distinction so time-in-state and transition
+patterns can be compared across models.
+
 ## Goals
 - Keep the project simple to run and review as a single binary.
 - Support iterative development through prototypes and examples instead of
@@ -26,11 +32,19 @@ collapsing everything into a single wall-clock view.
 
 ## Core domain concepts
 - Time is bucketed into Monday-based weekly five-minute buckets.
+- Controls in scope are explicit user-adjustable home-automation settings,
+  rather than implicit signals such as occupancy or motion detection.
 - Aggregates retain five clock interpretations for each series:
   UTC, local time, mean solar time, apparent solar time, and unequal hours.
-- Aggregates are quarter-scoped using UTC quarter boundaries.
+- The five clocks are a parallel analytical view of the same behavior rather
+  than mutually exclusive operating modes.
+- Aggregates are quarter-scoped using UTC quarter boundaries so seasonal
+  variation is preserved instead of collapsed into one year-round series.
 - Controls have a control ID, control type, state cardinality, and state labels.
 - Analytical data is keyed by control ID, model ID, and quarter index.
+- Model IDs partition analytical data so behavior can be retained and compared
+  across different automation configurations or model variants for the same
+  control instead of flattening everything into one aggregate.
 - Holding intervals capture how long a control remains in one state.
 - Transitions capture user-initiated moves from one state to another.
 - The current UI surfaces a normalized UTC heatmap that sums holding time
