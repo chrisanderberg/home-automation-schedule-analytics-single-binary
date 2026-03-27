@@ -27,9 +27,22 @@ type controlInput struct {
 	StateLabels []string
 }
 
+func clampStateCount(raw int) int {
+	if raw < 0 {
+		return 0
+	}
+	if raw > maxControlStates {
+		return maxControlStates
+	}
+	return raw
+}
+
 func validateControlInput(input controlInput) (storage.Control, string) {
 	controlID := strings.TrimSpace(input.ControlID)
 	if controlID == "" {
+		return storage.Control{}, "invalid controlId"
+	}
+	if controlID == "new" {
 		return storage.Control{}, "invalid controlId"
 	}
 	if input.NumStates < minControlStates || input.NumStates > maxControlStates {
@@ -78,8 +91,9 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 		return storage.Control{}, view.ControlFormData{}, "invalid form submission"
 	}
 
-	numStates, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("numStates")))
 	controlType := strings.TrimSpace(r.FormValue("controlType"))
+	numStates, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("numStates")))
+	numStates = clampStateCount(numStates)
 	if controlType == string(storage.ControlTypeSliders) {
 		numStates = len(defaultSliderLabels)
 	}
@@ -125,16 +139,17 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 }
 
 func newControlFormData(control storage.Control) view.ControlFormData {
+	numStates := control.NumStates
+	if numStates < minControlStates || numStates > maxControlStates {
+		numStates = minControlStates
+	}
 	form := view.ControlFormData{
 		ControlID:   control.ControlID,
 		ControlType: string(control.ControlType),
-		NumStates:   control.NumStates,
+		NumStates:   numStates,
 	}
 	if form.ControlType == "" {
 		form.ControlType = string(storage.ControlTypeRadioButtons)
-	}
-	if form.NumStates == 0 {
-		form.NumStates = minControlStates
 	}
 	form.StateLabels = make([]string, form.NumStates)
 	copy(form.StateLabels, control.StateLabels)
@@ -186,6 +201,9 @@ func parseModelForm(r *http.Request) (storage.Model, view.ModelFormData, string)
 		ModelID: modelID,
 	}
 	if modelID == "" {
+		return storage.Model{}, form, "invalid modelId"
+	}
+	if modelID == "new" {
 		return storage.Model{}, form, "invalid modelId"
 	}
 	return storage.Model{

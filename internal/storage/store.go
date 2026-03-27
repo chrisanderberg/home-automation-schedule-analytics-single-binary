@@ -301,6 +301,13 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
+		err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? AND model_id = ?`, controlID, model.ModelID).Scan(&exists)
+		switch {
+		case err == nil:
+			return ErrConflict
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
 
 		if _, err := tx.ExecContext(ctx, `INSERT INTO models (control_id, model_id) VALUES (?, ?)`, controlID, model.ModelID); err != nil {
 			return err

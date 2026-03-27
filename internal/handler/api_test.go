@@ -92,6 +92,16 @@ func TestControlsRejectsMissingFields(t *testing.T) {
 	}
 }
 
+// TestControlsRejectReservedNewControlID verifies the reserved UI route segment cannot be stored as a control ID.
+func TestControlsRejectReservedNewControlID(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{"controlId": "new", "controlType": "radio buttons", "numStates": 2}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
 // TestControlsRejectEmptyBody verifies an empty request body is rejected as invalid JSON.
 func TestControlsRejectEmptyBody(t *testing.T) {
 	db := openTestDB(t)

@@ -132,6 +132,11 @@ partially defined upfront and extended as development proceeds.
   Rationale: slider analytics already assume the fixed six-state shape, so the
   UI should reflect that contract directly instead of offering an invalid state
   count choice.
+- Prefer reserving the literal ID `new` so it cannot be used as a control ID or
+  model ID in persisted configuration.
+  Rationale: the UI uses `/controls/new` and `/controls/{controlID}/models/new`
+  as create routes, so allowing `new` as stored data would collide with page
+  routing and make those resources ambiguous.
 
 ## Candidate promotions to hard requirements
 - None yet.

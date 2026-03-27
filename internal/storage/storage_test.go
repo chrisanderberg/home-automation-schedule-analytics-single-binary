@@ -326,6 +326,9 @@ func TestSaveControlRenameMovesAggregates(t *testing.T) {
 	if err := UpsertControl(ctx, db, Control{ControlID: "old", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
+	if err := SaveModel(ctx, db, "old", "", Model{ModelID: "m"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
 	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "old", ModelID: "m", QuarterIndex: 1}, 2); err != nil {
 		t.Fatalf("create aggregate: %v", err)
 	}
@@ -357,6 +360,13 @@ func TestSaveControlRenameMovesAggregates(t *testing.T) {
 	if len(keys) != 1 || keys[0].ControlID != "new" {
 		t.Fatalf("expected aggregate to move to new control id, got %+v", keys)
 	}
+	models, err := ListModels(ctx, db, "new")
+	if err != nil {
+		t.Fatalf("list models: %v", err)
+	}
+	if len(models) != 1 || models[0].ModelID != "m" || models[0].ControlID != "new" {
+		t.Fatalf("expected model metadata to move with renamed control, got %+v", models)
+	}
 }
 
 // TestSaveControlRejectsConflictingCreate verifies the UI save path does not overwrite existing controls.
@@ -368,6 +378,27 @@ func TestSaveControlRejectsConflictingCreate(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 	err := SaveControl(ctx, db, "", Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 3})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+// TestSaveModelRenameRejectsAggregateOnlyConflict verifies renames cannot target model IDs that only exist in aggregates.
+func TestSaveModelRenameRejectsAggregateOnlyConflict(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := SaveModel(ctx, db, "light", "", Model{ModelID: "weekday"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "light", ModelID: "vacation", QuarterIndex: 1}, 2); err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "weekday", Model{ModelID: "vacation"})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)
 	}

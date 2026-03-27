@@ -325,6 +325,28 @@ func TestCreateControlFromUIEscapesRedirect(t *testing.T) {
 	}
 }
 
+// TestCreateControlFromUIRejectsReservedNewID verifies the UI rejects the reserved create-page segment as a control ID.
+func TestCreateControlFromUIRejectsReservedNewID(t *testing.T) {
+	db := openTestDB(t)
+	form := url.Values{
+		"controlId":   {"new"},
+		"controlType": {"radio buttons"},
+		"numStates":   {"2"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/controls/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	HandleCreateControl(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid controlId") {
+		t.Fatalf("expected validation error, got %q", w.Body.String())
+	}
+}
+
 // TestCreateRadioButtonsControlDefaultsToOnOff verifies the default two-state radio-buttons flow seeds on/off labels.
 func TestCreateRadioButtonsControlDefaultsToOnOff(t *testing.T) {
 	db := openTestDB(t)
@@ -610,6 +632,94 @@ func TestUpdateModelCanRename(t *testing.T) {
 	}
 	if len(keys) != 1 || keys[0].ModelID != "vacation" {
 		t.Fatalf("expected aggregate keys to follow renamed model, got %+v", keys)
+	}
+}
+
+// TestCreateModelRejectsReservedNewID verifies the reserved create-page segment cannot be stored as a model ID.
+func TestCreateModelRejectsReservedNewID(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	form := url.Values{"modelId": {"new"}}
+	req := httptest.NewRequest(http.MethodPost, "/controls/mode/models/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("controlID", "mode")
+	w := httptest.NewRecorder()
+	HandleCreateModel(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid modelId") {
+		t.Fatalf("expected validation error, got %q", w.Body.String())
+	}
+}
+
+// TestUpdateModelShowsErrorsOnSubmittedRow verifies update failures stay attached to the edited row.
+func TestUpdateModelShowsErrorsOnSubmittedRow(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := storage.SaveModel(ctx, db, "mode", "", storage.Model{ModelID: "weekend"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "vacation",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	form := url.Values{"modelId": {"vacation"}}
+	req := httptest.NewRequest(http.MethodPost, "/controls/mode/models/weekend", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("controlID", "mode")
+	req.SetPathValue("modelID", "weekend")
+	w := httptest.NewRecorder()
+	HandleUpdateModel(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `action="/controls/mode/models/weekend"`) || !strings.Contains(body, `value="vacation"`) {
+		t.Fatalf("expected submitted draft to stay on the edited row, got %q", body)
+	}
+	if strings.Contains(body, `<span>New model ID</span></label><input type="text" name="modelId" value="vacation"`) {
+		t.Fatalf("expected new-model form to stay empty, got %q", body)
+	}
+}
+
+// TestControlPageReturns500WhenModelLookupFails verifies model-list storage failures are not silently ignored.
+func TestControlPageReturns500WhenModelLookupFails(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE models`); err != nil {
+		t.Fatalf("drop models: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode", nil)
+	req.SetPathValue("controlID", "mode")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%q", w.Code, w.Body.String())
 	}
 }
 

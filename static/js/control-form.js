@@ -29,7 +29,7 @@
           if (i < sliderLabels.length) {
             input.disabled = false;
             field?.classList.remove("state-field-disabled");
-            if (lastControlType !== "sliders" || input.value.trim() === "") {
+            if (input.value.trim() === "") {
               input.value = sliderLabels[i];
             }
           } else {
@@ -43,11 +43,19 @@
       }
 
       numStates.readOnly = false;
+      if (lastControlType === "sliders") {
+        for (let i = 0; i < sliderLabels.length && i < stateLabels.length; i++) {
+          sliderLabels[i] = stateLabels[i].value;
+        }
+      }
       if (lastControlType === "sliders" && controlType.value === "radio buttons") {
         numStates.value = "2";
       }
       const enabledStates = Number.parseInt(numStates.value, 10) || 0;
       for (let i = 0; i < stateLabels.length; i++) {
+        if (i >= enabledStates) {
+          stateLabels[i].value = "";
+        }
         stateLabels[i].disabled = i >= enabledStates;
         stateLabels[i].closest(".state-field")?.classList.toggle("state-field-disabled", i >= enabledStates);
       }

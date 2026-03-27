@@ -31,8 +31,10 @@ type ModelOption struct {
 }
 
 type ModelRowData struct {
-	ModelID string
-	Action  string
+	ModelID      string
+	Action       string
+	DraftModelID string
+	Error        string
 }
 
 type ModelFormData struct {
@@ -83,8 +85,13 @@ templ ControlPage(data ControlPageData) {
 						<form method="post" action={ templ.SafeURL(model.Action) } class="model-row">
 							<label class="form-field">
 								<span>Model ID</span>
-								<input type="text" name="modelId" value={ model.ModelID } required/>
+								<input type="text" name="modelId" value={ modelRowValue(model) } required/>
 							</label>
+							if model.Error != "" {
+								<div class="form-errors">
+									<p>{ model.Error }</p>
+								</div>
+							}
 							<button type="submit" class="btn btn-secondary">Save model</button>
 						</form>
 					}
@@ -140,4 +147,11 @@ templ HeatmapCanvas(bucketJSON string) {
 	<div class="heatmap-wrapper">
 		<canvas class="heatmap" data-buckets={ bucketJSON } width="900" height="200"></canvas>
 	</div>
+}
+
+func modelRowValue(model ModelRowData) string {
+	if model.DraftModelID != "" {
+		return model.DraftModelID
+	}
+	return model.ModelID
 }

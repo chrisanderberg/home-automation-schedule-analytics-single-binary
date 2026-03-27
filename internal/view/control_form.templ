@@ -98,14 +98,14 @@ templ ControlForm(data ControlFormPageData) {
 		if data.StructureHint != "" {
 			<p class="form-hint">{ data.StructureHint }</p>
 		}
-		<div class="state-grid">
-			for _, idx := range controlStateIndexes() {
-				<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
-					<span>{ fmt.Sprintf("State %d label", idx) }</span>
-					<input
-						type="text"
-						name="stateLabel"
-						value={ controlStateLabel(data.Form.StateLabels, idx) }
+			<div class="state-grid">
+				for _, idx := range controlStateIndexes() {
+					<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
+					<span>{ fmt.Sprintf("State %d label", idx+1) }</span>
+						<input
+							type="text"
+							name="stateLabel"
+							value={ controlStateLabel(data.Form.StateLabels, idx) }
 						disabled?={ !controlStateEnabled(data.Form.NumStates, idx) }
 					/>
 				</label>

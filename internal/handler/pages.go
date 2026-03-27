@@ -108,7 +108,12 @@ func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 			return
 		}
 
-		data := buildControlPageData(r, db, control, keys)
+		data, err := buildControlPageData(r, db, control, keys)
+		if err != nil {
+			log.Printf("build control page data for %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		data.FormData = controlFormPageData(newControlFormData(control), control.ControlID, len(keys) > 0, errMsg)
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -217,10 +222,17 @@ func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.D
 		return
 	}
 
-	data := buildControlPageData(r, db, control, keys)
+	data, err := buildControlPageData(r, db, control, keys)
+	if err != nil {
+		log.Printf("build control page data for %s: %v", control.ControlID, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	data.FormData = controlFormPageData(form, control.ControlID, hasAggregates, errMsg)
 	data.ModelForm = defaultModelForm(control.ControlID)
-	if modelForm.ModelID != "" || modelErr != "" {
+	if r.PathValue("modelID") != "" && (modelForm.ModelID != "" || modelErr != "") {
+		applyModelRowError(&data, r.PathValue("modelID"), modelForm, modelErr)
+	} else if modelForm.ModelID != "" || modelErr != "" {
 		data.ModelForm = modelForm
 		data.ModelForm.Action = fmt.Sprintf("/controls/%s/models/new", url.PathEscape(control.ControlID))
 		data.ModelForm.Error = modelErr
@@ -232,7 +244,7 @@ func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.D
 	}
 }
 
-func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) view.ControlPageData {
+func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.ControlPageData, error) {
 	data := view.ControlPageData{
 		ControlID:     control.ControlID,
 		ControlType:   string(control.ControlType),
@@ -243,18 +255,19 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 		HasAggregates: len(keys) > 0,
 	}
 	models, err := storage.ListModels(r.Context(), db, control.ControlID)
-	if err == nil {
-		for _, model := range models {
-			data.Models = append(data.Models, view.ModelRowData{
-				ModelID: model.ModelID,
-				Action:  fmt.Sprintf("/controls/%s/models/%s", url.PathEscape(control.ControlID), url.PathEscape(model.ModelID)),
-			})
-			data.ModelOptions = append(data.ModelOptions, view.ModelOption{
-				ModelID:  model.ModelID,
-				Selected: false,
-				PageURL:  controlPageURL(url.PathEscape(control.ControlID), model.ModelID),
-			})
-		}
+	if err != nil {
+		return view.ControlPageData{}, err
+	}
+	for _, model := range models {
+		data.Models = append(data.Models, view.ModelRowData{
+			ModelID: model.ModelID,
+			Action:  fmt.Sprintf("/controls/%s/models/%s", url.PathEscape(control.ControlID), url.PathEscape(model.ModelID)),
+		})
+		data.ModelOptions = append(data.ModelOptions, view.ModelOption{
+			ModelID:  model.ModelID,
+			Selected: false,
+			PageURL:  controlPageURL(url.PathEscape(control.ControlID), model.ModelID),
+		})
 	}
 
 	selectedModelID := ""
@@ -321,12 +334,23 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 	if selectedModelID != "" && selectedQuarter >= 0 {
 		data.BucketJSON = buildBucketJSON(r.Context(), db, control.ControlID, selectedModelID, selectedQuarter, control.NumStates)
 	}
-	return data
+	return data, nil
 }
 
 func defaultModelForm(controlID string) view.ModelFormData {
 	return view.ModelFormData{
 		Action: fmt.Sprintf("/controls/%s/models/new", url.PathEscape(controlID)),
+	}
+}
+
+func applyModelRowError(data *view.ControlPageData, previousModelID string, form view.ModelFormData, errMsg string) {
+	for i := range data.Models {
+		if data.Models[i].ModelID != previousModelID {
+			continue
+		}
+		data.Models[i].DraftModelID = form.ModelID
+		data.Models[i].Error = errMsg
+		return
 	}
 }
 
