@@ -154,11 +154,7 @@ def infer_preference(smoothed_holding, smoothed_transitions, parameters):
     return fallback, rates, True
 
 
-def expected_from_raw(raw_payload, report_payload):
-    if "clock" in report_payload:
-        clock_slug = report_payload["clock"]["clockSlug"]
-    else:
-        clock_slug = report_payload["clocks"][0]["clockSlug"]
+def expected_from_raw(raw_payload, report_payload, clock_slug):
     raw_clock = get_clock_payload(raw_payload, clock_slug)
     report_clock = get_clock_payload(report_payload, clock_slug)
     parameters = report_payload["parameters"]
@@ -196,7 +192,9 @@ def expected_from_raw(raw_payload, report_payload):
             for to_state in range(num_states):
                 if state == to_state:
                     continue
-                rates_by_transition[(state, to_state)][bucket] = rates[state][to_state]
+                key = (state, to_state)
+                if key in rates_by_transition:
+                    rates_by_transition[key][bucket] = rates[state][to_state]
 
     return {
         "occupancy": occupancy,
@@ -223,8 +221,8 @@ def compare_series(expected, actual, label, tolerance=1e-6):
         require_close(f"{label}[{idx}]", got, want, tolerance)
 
 
-def compare_report(raw_payload, report_payload):
-    expected = expected_from_raw(raw_payload, report_payload)
+def compare_report(raw_payload, report_payload, clock_slug):
+    expected = expected_from_raw(raw_payload, report_payload, clock_slug)
     report_clock = expected["clock"]
 
     occupancy_series = report_clock.get("occupancySeries")
@@ -266,13 +264,34 @@ def compare_report(raw_payload, report_payload):
 
     intermediates = report_clock.get("intermediates") or {}
     if "smoothedHoldingMillis" in intermediates:
+        if len(intermediates["smoothedHoldingMillis"]) != len(expected["smoothed_holding"]):
+            raise AssertionError(
+                "smoothedHoldingMillis length mismatch "
+                f"{len(intermediates['smoothedHoldingMillis'])} != {len(expected['smoothed_holding'])}"
+            )
         for state_idx, series in enumerate(intermediates["smoothedHoldingMillis"]):
             compare_series(expected["smoothed_holding"][state_idx], series["buckets"], f"smoothed holding state {state_idx}")
     if "smoothedTransitionCounts" in intermediates:
+        actual_transition_keys = {
+            (series["fromState"], series["toState"]) for series in intermediates["smoothedTransitionCounts"]
+        }
+        expected_transition_keys = set(expected["smoothed_transition"].keys())
+        if actual_transition_keys != expected_transition_keys:
+            raise AssertionError(
+                f"smoothedTransitionCounts keys mismatch {sorted(actual_transition_keys)} != {sorted(expected_transition_keys)}"
+            )
         for series in intermediates["smoothedTransitionCounts"]:
             key = (series["fromState"], series["toState"])
             compare_series(expected["smoothed_transition"][key], series["buckets"], f"smoothed transition {key}")
     if "transitionRates" in intermediates:
+        actual_rate_keys = {
+            (series["fromState"], series["toState"]) for series in intermediates["transitionRates"]
+        }
+        expected_rate_keys = set(expected["rates"].keys())
+        if actual_rate_keys != expected_rate_keys:
+            raise AssertionError(
+                f"transitionRates keys mismatch {sorted(actual_rate_keys)} != {sorted(expected_rate_keys)}"
+            )
         for series in intermediates["transitionRates"]:
             key = (series["fromState"], series["toState"])
             compare_series(expected["rates"][key], series["buckets"], f"transition rate {key}")
@@ -338,7 +357,7 @@ def self_test():
             "intermediates": {"transitionRates": []},
         },
     }
-    expected = expected_from_raw(raw_payload, report_payload)
+    expected = expected_from_raw(raw_payload, report_payload, "utc")
     report_payload["clock"]["occupancySeries"] = [
         {"state": idx, "buckets": buckets} for idx, buckets in enumerate(expected["occupancy"])
     ]
@@ -353,7 +372,7 @@ def self_test():
         for (from_state, to_state), buckets in sorted(expected["rates"].items())
         if from_state != to_state
     ]
-    compare_report(raw_payload, report_payload)
+    compare_report(raw_payload, report_payload, "utc")
 
 
 def main():
@@ -371,7 +390,7 @@ def main():
     else:
         raise SystemExit("provide --raw-file/--report-file, --base-url, or --self-test")
 
-    compare_report(raw_payload, report_payload)
+    compare_report(raw_payload, report_payload, args.clock)
     print("analytics reference check passed")
     return 0
 
