@@ -43,8 +43,6 @@ func SplitIntervalUTC(startMs, endMs int64) ([]BucketSpan, error) {
 		if millis <= 0 {
 			return nil, ErrInvalidInterval
 		}
-		// Local bucket spans preserve real DST fold behavior, so repeated local
-		// clock labels are still tracked as distinct UTC-backed intervals.
 		spans = append(spans, BucketSpan{Bucket: bucket, Millis: millis})
 		cur = boundary
 	}
@@ -74,6 +72,8 @@ func SplitIntervalLocal(startMs, endMs int64, loc *time.Location) ([]BucketSpan,
 		if millis <= 0 {
 			return nil, ErrInvalidInterval
 		}
+		// Local bucket spans preserve real DST fold behavior, so repeated local
+		// clock labels are still tracked as distinct UTC-backed intervals.
 		spans = append(spans, BucketSpan{Bucket: bucket, Millis: millis})
 		cur = boundary
 	}

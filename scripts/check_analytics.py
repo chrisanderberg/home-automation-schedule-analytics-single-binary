@@ -17,6 +17,9 @@ def load_json(path):
 
 
 def fetch_json(url):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"unsupported URL scheme: {parsed.scheme!r}")
     with urllib.request.urlopen(url) as resp:
         return json.load(resp)
 
