@@ -270,6 +270,12 @@ def compare_report(raw_payload, report_payload, clock_slug):
                 f"{len(intermediates['smoothedHoldingMillis'])} != {len(expected['smoothed_holding'])}"
             )
         for state_idx, series in enumerate(intermediates["smoothedHoldingMillis"]):
+            if "state" not in series:
+                raise AssertionError(f"smoothedHoldingMillis[{state_idx}] missing state")
+            if series["state"] != state_idx:
+                raise AssertionError(
+                    f"smoothedHoldingMillis state mismatch at index {state_idx}: got {series['state']}"
+                )
             compare_series(expected["smoothed_holding"][state_idx], series["buckets"], f"smoothed holding state {state_idx}")
     if "smoothedTransitionCounts" in intermediates:
         actual_transition_keys = {
