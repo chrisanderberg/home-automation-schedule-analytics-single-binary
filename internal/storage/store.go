@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"strings"
 
@@ -100,11 +101,7 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if tx != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	var existing Control
 	var existingType string
@@ -185,7 +182,6 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	tx = nil
 	return nil
 }
 
@@ -241,12 +237,14 @@ func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 }
 
 func normalizeControlType(controlType ControlType) ControlType {
-	switch strings.TrimSpace(string(controlType)) {
+	normalized := strings.TrimSpace(string(controlType))
+	switch normalized {
 	case "discrete", string(ControlTypeRadioButtons):
 		return ControlTypeRadioButtons
 	case "slider", "continuous", string(ControlTypeSliders):
 		return ControlTypeSliders
 	default:
+		log.Printf("unknown control type: %q", normalized)
 		return controlType
 	}
 }
@@ -329,11 +327,7 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if tx != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	if previousModelID != "" {
 		var sourceExists int
@@ -405,7 +399,6 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	tx = nil
 	return nil
 }
 
