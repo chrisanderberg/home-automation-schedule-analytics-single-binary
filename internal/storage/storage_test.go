@@ -90,6 +90,20 @@ func TestSaveModelRenameMovesAggregates(t *testing.T) {
 	}
 }
 
+// TestSaveModelRejectsEmptyModelID verifies blank model IDs are treated as validation failures.
+func TestSaveModelRejectsEmptyModelID(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "", Model{ModelID: "   "})
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
 // TestAggregateCreateUpdate verifies aggregates can be created, mutated, and read back.
 func TestAggregateCreateUpdate(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)

@@ -302,6 +302,29 @@ func TestCreateControlFromUI(t *testing.T) {
 	}
 }
 
+// TestCreateControlFromUIEscapesRedirect verifies the post-create redirect path-escapes the control ID.
+func TestCreateControlFromUIEscapesRedirect(t *testing.T) {
+	db := openTestDB(t)
+	form := url.Values{
+		"controlId":   {"mode/scene"},
+		"controlType": {"radio buttons"},
+		"numStates":   {"2"},
+		"stateLabel":  {"off", "on"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/controls/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	HandleCreateControl(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d body=%q", w.Code, w.Body.String())
+	}
+	if location := w.Header().Get("Location"); location != "/controls/mode%2Fscene" {
+		t.Fatalf("unexpected redirect: %q", location)
+	}
+}
+
 // TestCreateRadioButtonsControlDefaultsToOnOff verifies the default two-state radio-buttons flow seeds on/off labels.
 func TestCreateRadioButtonsControlDefaultsToOnOff(t *testing.T) {
 	db := openTestDB(t)
@@ -523,6 +546,9 @@ func TestCreateModelFromUI(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303, got %d body=%q", w.Code, w.Body.String())
 	}
+	if location := w.Header().Get("Location"); location != "/controls/mode?model=weekday" {
+		t.Fatalf("unexpected redirect: %q", location)
+	}
 	models, err := storage.ListModels(ctx, db, "mode")
 	if err != nil {
 		t.Fatalf("list models: %v", err)
@@ -561,6 +587,9 @@ func TestUpdateModelCanRename(t *testing.T) {
 
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303, got %d body=%q", w.Code, w.Body.String())
+	}
+	if location := w.Header().Get("Location"); location != "/controls/mode?model=vacation" {
+		t.Fatalf("unexpected redirect: %q", location)
 	}
 	models, err := storage.ListModels(ctx, db, "mode")
 	if err != nil {

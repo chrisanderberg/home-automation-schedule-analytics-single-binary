@@ -73,7 +73,7 @@ func HandleCreateControl(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		http.Redirect(w, r, fmt.Sprintf("/controls/%s", control.ControlID), http.StatusSeeOther)
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), ""), http.StatusSeeOther)
 	}
 }
 
@@ -150,7 +150,7 @@ func HandleUpdateControl(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		http.Redirect(w, r, fmt.Sprintf("/controls/%s", control.ControlID), http.StatusSeeOther)
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), ""), http.StatusSeeOther)
 	}
 }
 
@@ -177,7 +177,7 @@ func HandleCreateModel(db *sql.DB) http.HandlerFunc {
 			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, mapModelSaveError(err))
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/controls/%s", control.ControlID), http.StatusSeeOther)
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), model.ModelID), http.StatusSeeOther)
 	}
 }
 
@@ -205,7 +205,7 @@ func HandleUpdateModel(db *sql.DB) http.HandlerFunc {
 			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, mapModelSaveError(err))
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/controls/%s", control.ControlID), http.StatusSeeOther)
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), model.ModelID), http.StatusSeeOther)
 	}
 }
 
@@ -252,7 +252,7 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 			data.ModelOptions = append(data.ModelOptions, view.ModelOption{
 				ModelID:  model.ModelID,
 				Selected: false,
-				PageURL:  fmt.Sprintf("/controls/%s?model=%s", url.PathEscape(control.ControlID), url.QueryEscape(model.ModelID)),
+				PageURL:  controlPageURL(url.PathEscape(control.ControlID), model.ModelID),
 			})
 		}
 	}
@@ -328,6 +328,14 @@ func defaultModelForm(controlID string) view.ModelFormData {
 	return view.ModelFormData{
 		Action: fmt.Sprintf("/controls/%s/models/new", url.PathEscape(controlID)),
 	}
+}
+
+func controlPageURL(escapedControlID, modelID string) string {
+	pageURL := fmt.Sprintf("/controls/%s", escapedControlID)
+	if modelID == "" {
+		return pageURL
+	}
+	return fmt.Sprintf("%s?model=%s", pageURL, url.QueryEscape(modelID))
 }
 
 // HandleSnapshotPage renders the snapshot listing page.

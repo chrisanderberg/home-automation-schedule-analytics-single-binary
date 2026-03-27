@@ -16,6 +16,7 @@ import (
 
 var ErrNotFound = errors.New("not found")
 var ErrConflict = errors.New("conflict")
+var ErrValidation = errors.New("validation error")
 var ErrAggregateBlobSizeMismatch = errors.New("aggregate blob size mismatch")
 
 // Open creates a SQLite handle configured for this repository's schema expectations.
@@ -58,17 +59,40 @@ func UpsertControl(ctx context.Context, db *sql.DB, control Control) error {
 	return err
 }
 
+func insertControl(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, control Control) error {
+	labels, err := encodeLabels(control.StateLabels)
+	if err != nil {
+		return err
+	}
+	result, err := exec.ExecContext(
+		ctx,
+		`INSERT INTO controls (control_id, control_type, num_states, state_labels)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(control_id) DO NOTHING`,
+		control.ControlID,
+		string(control.ControlType),
+		control.NumStates,
+		labels,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrConflict
+	}
+	return nil
+}
+
 // SaveControl creates a new control or updates an existing control, including control-id renames.
 func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, control Control) error {
 	if previousControlID == "" {
-		existing, err := GetControl(ctx, db, control.ControlID)
-		if err == nil && existing.ControlID != "" {
-			return ErrConflict
-		}
-		if err != nil && !errors.Is(err, ErrNotFound) {
-			return err
-		}
-		return UpsertControl(ctx, db, control)
+		return insertControl(ctx, db, control)
 	}
 
 	if previousControlID == control.ControlID {
@@ -95,18 +119,7 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 		return err
 	}
 
-	labels, err := encodeLabels(control.StateLabels)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO controls (control_id, control_type, num_states, state_labels) VALUES (?, ?, ?, ?)`,
-		control.ControlID,
-		string(control.ControlType),
-		control.NumStates,
-		labels,
-	); err != nil {
+	if err := insertControl(ctx, tx, control); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(
@@ -246,7 +259,7 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 	model.ControlID = controlID
 	model.ModelID = strings.TrimSpace(model.ModelID)
 	if model.ModelID == "" {
-		return ErrConflict
+		return ErrValidation
 	}
 
 	tx, err := db.BeginTx(ctx, nil)

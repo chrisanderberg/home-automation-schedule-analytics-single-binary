@@ -235,6 +235,8 @@ func mapControlSaveError(err error) string {
 
 func mapModelSaveError(err error) string {
 	switch {
+	case errors.Is(err, storage.ErrValidation):
+		return "model ID is required"
 	case errors.Is(err, storage.ErrConflict):
 		return "model ID already exists"
 	default:
