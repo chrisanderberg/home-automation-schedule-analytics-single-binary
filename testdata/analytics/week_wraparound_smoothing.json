@@ -1,0 +1,38 @@
+{
+  "name": "week_wraparound_smoothing",
+  "control": {
+    "controlId": "mode-wrap",
+    "controlType": "radio buttons",
+    "numStates": 2,
+    "stateLabels": ["off", "on"]
+  },
+  "registeredModels": ["weekday"],
+  "aggregate": {
+    "modelId": "weekday",
+    "quarterIndex": 12,
+    "holdings": [
+      { "clock": "utc", "state": 0, "bucket": 0, "value": 300000 },
+      { "clock": "utc", "state": 0, "bucket": 2015, "value": 300000 }
+    ]
+  },
+  "reportRequests": [
+    {
+      "name": "gaussian_wraparound",
+      "query": {
+        "clock": "utc",
+        "smoothing": "gaussian",
+        "kernelRadius": "2",
+        "kernelSigma": "1.0",
+        "include": ["smoothed"]
+      },
+      "expect": {
+        "occupancyBucketSumsToOne": true,
+        "preferenceBucketSumsToOne": true,
+        "positiveSeries": [
+          { "section": "smoothedHolding", "state": 0, "bucket": 1 },
+          { "section": "smoothedHolding", "state": 0, "bucket": 2014 }
+        ]
+      }
+    }
+  ]
+}

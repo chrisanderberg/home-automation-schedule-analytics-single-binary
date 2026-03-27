@@ -18,6 +18,8 @@ partially defined upfront and extended as development proceeds.
   commands.
 - The analytics model shall focus on time-based behavioral modeling rather than
   only basic counts or static summaries.
+- The primary reported preference output shall be the stationary distribution
+  of an inferred CTMC rather than raw observed holding time alone.
 - Controls in scope shall be explicit user-adjustable home-automation settings
   rather than implicit signals such as occupancy or motion detection.
 - Time shall be represented using Monday-based weekly five-minute buckets.
@@ -27,6 +29,9 @@ partially defined upfront and extended as development proceeds.
   parallel views computed for the same underlying behavior, not as
   mutually-exclusive single-clock modes.
 - Aggregates shall be keyed by control ID, model ID, and UTC quarter index.
+- CTMC inference shall be defined per `(control ID, model ID, UTC quarter
+  index, clock, bucket)` before any derived cross-model comparison or
+  aggregation is performed.
 - Local-time bucket splitting shall follow exact DST fold semantics by using
   the earliest UTC instant that changes the local bucket, even when a repeated
   local hour causes bucket order to revisit an earlier wall-clock time.
@@ -40,6 +45,10 @@ partially defined upfront and extended as development proceeds.
   chain style reasoning about transitions and dwell behavior.
 - Prefer schedule estimation or smoothing designs that are compatible with
   KDE-style approaches when they improve the model or user-facing analysis.
+- Prefer documenting the analytics model explicitly in terms of the project's
+  core hypothesis:
+  raw holding time mostly reflects model behavior, while user-initiated
+  transitions provide corrective evidence about user preference.
 - Prefer preserving quarter-scoped aggregates as seasonal windows rather than
   collapsing all historical data for a control/model into one undifferentiated
   long-running series.
@@ -52,6 +61,42 @@ partially defined upfront and extended as development proceeds.
   flattened cross-model totals.
   Rationale: cross-model comparison is part of the project's analytical
   direction, even when a UI presents a simplified single-model view.
+- Prefer KDE to be defined as cyclic smoothing along the time-of-week axis,
+  applied independently per control, model, and clock before CTMC estimation.
+  Rationale: sparse 5-minute weekly buckets need nearby time buckets to inform
+  one another before transition-rate inference is stable.
+- Prefer KDE and damping to be the primary sparse-data handling mechanisms for
+  analytics and reporting rather than leaving sparse behavior undefined.
+  Rationale: sparse data is expected in many weekly buckets, and the intended
+  model already relies on smoothing and damping rather than ad hoc fallbacks.
+- Prefer CTMC construction to use smoothed holding times and smoothed
+  transition statistics as its immediate inputs.
+- Prefer reporting to treat actual holding-time heatmaps as diagnostic views,
+  while stationary distributions are the main preference-oriented outputs.
+- Prefer reporting and UI terminology to distinguish clearly between actual
+  occupancy and inferred preference.
+- Prefer cross-model comparison views to be derived from per-model inference,
+  not to replace per-model CTMC estimation as the primary analytical unit.
+- Prefer reporting to support comparison across the five clocks as alternative
+  time coordinate systems for the same underlying behavior.
+- Prefer reporting to make it possible to compare:
+  per-model actual occupancy,
+  per-model inferred preference,
+  cross-model preference convergence,
+  and clock-by-clock preference differences.
+- Prefer comments to describe what a declaration, test, or complex code section
+  is responsible for, while leaving the code itself to communicate how it works.
+  Keep those comments concise and add them when they reduce reader cognitive
+  load rather than restating obvious mechanics.
+- Prefer adding inline comments around non-obvious invariants, edge-case
+  handling, fallback behavior, domain-model translations, and data-shape
+  transitions when those details would otherwise force the reader to reverse
+  engineer intent from dense code.
+  Rationale: those are the points where future readers are most likely to stop
+  and ask "why is this here?" even if the mechanics are already visible.
+- Prefer the stationary distribution to be interpreted as the expected
+  long-run time allocation of the inferred CTMC and therefore the best
+  preference estimate for a given analytical slice.
 - Keep a clear distinction between stored aggregate richness and any simplified
   projections used by a UI or downstream consumer.
 - Treat control metadata such as control type, state cardinality, and state
@@ -64,6 +109,29 @@ partially defined upfront and extended as development proceeds.
   with HTML page routes at the root.
   Rationale: this keeps page routing and API routing distinct without adding
   another process or application boundary.
+- Prefer structured analytics read endpoints under `/api/v1/analytics` for
+  retrieving one `(control, model, quarter, clock)` analytical slice as JSON.
+  Rationale: read-side analytics should be available to UI and automation
+  clients without introducing a separate reporting service.
+- Prefer exposing raw analytics reads separately from derived reporting reads,
+  so test harnesses can inspect stored per-bucket holdings and transitions
+  without conflating them with smoothing, damping, or CTMC inference.
+  Rationale: keeping raw and derived reads distinct makes analytical
+  correctness easier to validate stage by stage.
+- Prefer derived analytics reads to echo the smoothing and damping parameters
+  applied to the response.
+  Rationale: harnesses and automation clients need reproducible report
+  metadata, not just the final derived series.
+- Prefer derived analytics reads to support explicit bypasses for smoothing and
+  damping rather than requiring clients to infer that a zero-valued parameter
+  disables a transform.
+  Rationale: explicit `none`-style controls make tests clearer and avoid
+  overloading numeric parameters with hidden semantics.
+- Prefer derived analytics reads to optionally expose intermediate raw,
+  smoothed, and rate series for harness validation without making them part of
+  every default payload.
+  Rationale: intermediates are useful for analytical verification but would add
+  unnecessary payload size to the common case.
 - Prefer co-locating blob layout, bucketing, solar clocks, and quarter
   handling logic rather than splitting them into many tiny packages unless
   there is a strong reason to do otherwise.
@@ -141,6 +209,57 @@ partially defined upfront and extended as development proceeds.
   actually has aggregate data when one exists.
   Rationale: choosing a data-backed model by default avoids landing on an empty
   analytics view when the control already has recorded aggregates.
+- Prefer read-side analytics to be computed directly from the stored
+  per-quarter aggregate blobs rather than requiring a second materialized
+  analytics table.
+  Rationale: the aggregate blob is already the source of truth for holdings and
+  transitions, so deriving reports on read keeps the storage model simpler.
+- Prefer control pages to report one `(control, model, quarter, clock)` slice
+  at a time, with selectors for model, quarter, and clock, plus side-by-side
+  actual occupancy and inferred-preference views for each state.
+  Rationale: this keeps the UI aligned with the analytical unit defined by the
+  model while still making actual occupancy and inferred preference easy to
+  compare.
+- Prefer control-page analytics selectors to preserve the same report
+  parameters the API supports, including analytics mode, smoothing, damping,
+  and optional intermediate-series toggles.
+  Rationale: keeping the UI URL model aligned with the API makes ad hoc visual
+  inspection and automated harness testing comparable.
+- Prefer the control page to render raw and derived analytics as separate
+  panels rather than forcing one view model to collapse both concepts.
+  Rationale: raw per-bucket holdings/transitions and derived preference reports
+  answer different questions, so separate panels keep each view simpler.
+- Prefer analytics tests to use tiny deterministic fixtures with only a few
+  populated buckets unless a case is specifically about broader weekly shapes.
+  Rationale: small fixtures keep expected raw and derived behavior reviewable
+  and make analytical regressions easier to localize.
+- Prefer analytics harnesses to validate the pipeline in layers:
+  raw stored counters,
+  parameterized intermediates,
+  and final derived distributions.
+  Rationale: stage-by-stage assertions make it clear whether a failure belongs
+  to storage, smoothing, damping, or CTMC inference.
+- Prefer at least one analytics reference checker that recomputes report output
+  independently from the raw endpoint rather than only reusing application
+  logic in tests.
+  Rationale: an independent implementation is the strongest guard against
+  coherent but incorrect production/report code.
+- Prefer weekly analytics charts to treat the 2016 Monday-based five-minute
+  buckets as one continuous x-axis with day-boundary markers, rather than
+  splitting weekday and time-of-day into separate plot axes by default.
+  Rationale: the stored series are fundamentally one-dimensional weekly bucket
+  sequences, and a single weekly axis makes totals, spikes, and transitions
+  easier to compare directly.
+- Prefer raw holding totals and raw transition totals to render as weekly bar
+  charts aggregated across states or transition pairs before exposing per-state
+  or per-pair drill-down charts.
+  Rationale: aggregate diagnostic charts show overall activity patterns first
+  and reduce the visual noise of many small per-series views.
+- Prefer derived actual occupancy and inferred preference to render as stacked
+  weekly bar charts with stable state colors shared across related charts.
+  Rationale: stacked weekly bars preserve the full 2016-bucket timeline while
+  making state-allocation comparisons readable and keeping the stationary
+  distribution visually distinct as the primary preference view.
 
 ## Candidate promotions to hard requirements
 - None yet.

@@ -2,6 +2,7 @@ package view
 
 import "fmt"
 
+// ControlFormData carries the editable values for one control form render.
 type ControlFormData struct {
 	ControlID   string
 	ControlType string
@@ -9,35 +10,41 @@ type ControlFormData struct {
 	StateLabels []string
 }
 
+// ControlFormPageData packages one control form render with route and locking state.
 type ControlFormPageData struct {
-	Title            string
-	Heading          string
-	Action           string
-	SubmitLabel      string
-	CancelURL        string
-	ExistingControl  string
-	LockedStructure  bool
-	StructureHint    string
-	Errors           []string
-	Form             ControlFormData
+	Title           string
+	Heading         string
+	Action          string
+	SubmitLabel     string
+	CancelURL       string
+	ExistingControl string
+	LockedStructure bool
+	StructureHint   string
+	Errors          []string
+	Form            ControlFormData
 }
 
+// controlTypeSelected reports whether one control-type option should be selected.
 func controlTypeSelected(current, value string) bool {
 	return current == value
 }
 
+// controlTypeIsSlider reports whether the current control type uses the slider UI.
 func controlTypeIsSlider(current string) bool {
 	return current == "sliders"
 }
 
+// controlStateIndexes returns the fixed list of state field indexes rendered by the form.
 func controlStateIndexes() []int {
 	return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 }
 
+// controlStateEnabled reports whether a state-label field should be editable.
 func controlStateEnabled(numStates, idx int) bool {
 	return idx < numStates
 }
 
+// controlStateLabel returns the label value to show for one state field.
 func controlStateLabel(labels []string, idx int) string {
 	if idx < len(labels) {
 		return labels[idx]
@@ -58,6 +65,7 @@ templ ControlFormPage(data ControlFormPageData) {
 	}
 }
 
+// ControlForm renders the editable control metadata form.
 templ ControlForm(data ControlFormPageData) {
 	if len(data.Errors) > 0 {
 		<div class="form-errors">
@@ -98,14 +106,14 @@ templ ControlForm(data ControlFormPageData) {
 		if data.StructureHint != "" {
 			<p class="form-hint">{ data.StructureHint }</p>
 		}
-			<div class="state-grid">
-				for _, idx := range controlStateIndexes() {
-					<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
+		<div class="state-grid">
+			for _, idx := range controlStateIndexes() {
+				<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
 					<span>{ fmt.Sprintf("State %d label", idx+1) }</span>
-						<input
-							type="text"
-							name="stateLabel"
-							value={ controlStateLabel(data.Form.StateLabels, idx) }
+					<input
+						type="text"
+						name="stateLabel"
+						value={ controlStateLabel(data.Form.StateLabels, idx) }
 						disabled?={ !controlStateEnabled(data.Form.NumStates, idx) }
 					/>
 				</label>
@@ -118,6 +126,7 @@ templ ControlForm(data ControlFormPageData) {
 	</form>
 }
 
+// stateFieldClass returns the CSS class for enabled versus locked state fields.
 func stateFieldClass(enabled bool) string {
 	if enabled {
 		return "form-field state-field"

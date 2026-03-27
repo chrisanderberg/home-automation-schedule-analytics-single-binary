@@ -1,35 +1,52 @@
 package view
 
 import "fmt"
-import "net/url"
 
+// QuarterOption describes one quarter selector choice on the control page.
 type QuarterOption struct {
 	QuarterIndex int
 	Label        string
 	Selected     bool
+	PageURL      string
 }
 
-type ControlPageData struct {
-	ControlID    string
-	ControlType  string
-	NumStates    int
-	StateLabels  []string
-	ModelID      string
-	ModelOptions []ModelOption
-	Models       []ModelRowData
-	ModelForm    ModelFormData
-	Quarters     []QuarterOption
-	BucketJSON   string
-	FormData     ControlFormPageData
-	HasAggregates bool
-}
-
-type ModelOption struct {
-	ModelID   string
+// ClockOption describes one clock selector choice on the control page.
+type ClockOption struct {
+	ClockSlug string
+	Label     string
 	Selected  bool
 	PageURL   string
 }
 
+// ControlPageData contains all data needed to render one existing control page.
+type ControlPageData struct {
+	ControlID     string
+	ControlType   string
+	NumStates     int
+	StateLabels   []string
+	ModelID       string
+	ModelOptions  []ModelOption
+	ModeOptions   []AnalyticsModeOption
+	Models        []ModelRowData
+	ModelForm     ModelFormData
+	Quarters      []QuarterOption
+	ClockOptions  []ClockOption
+	AnalyticsMode string
+	ReportOptions AnalyticsOptionsFormData
+	Analytics     AnalyticsViewData
+	RawAnalytics  RawAnalyticsViewData
+	FormData      ControlFormPageData
+	HasAggregates bool
+}
+
+// ModelOption describes one model selector choice on the control page.
+type ModelOption struct {
+	ModelID  string
+	Selected bool
+	PageURL  string
+}
+
+// ModelRowData contains one editable model row on the control page.
 type ModelRowData struct {
 	ModelID      string
 	Action       string
@@ -37,13 +54,108 @@ type ModelRowData struct {
 	Error        string
 }
 
+// ModelFormData carries the editable values for a model form row.
 type ModelFormData struct {
 	Action  string
 	ModelID string
 	Error   string
 }
 
-// quarterButtonClass returns the CSS class for a quarter selector button.
+// AnalyticsModeOption describes one analytics mode selector choice.
+type AnalyticsModeOption struct {
+	Label    string
+	Mode     string
+	Selected bool
+	PageURL  string
+}
+
+// AnalyticsOptionsFormData carries the URL-backed report-parameter controls.
+type AnalyticsOptionsFormData struct {
+	Action                 string
+	ModelID                string
+	Quarter                string
+	Clock                  string
+	Mode                   string
+	Smoothing              string
+	KernelRadius           string
+	KernelSigma            string
+	HoldingDampingMillis   string
+	TransitionDampingCount string
+	IncludeRaw             bool
+	IncludeSmoothed        bool
+	IncludeRates           bool
+	Error                  string
+}
+
+// AnalyticsViewData packages the selected analytics slice for template rendering.
+type AnalyticsViewData struct {
+	HasData          bool
+	ModelID          string
+	QuarterLabel     string
+	ClockLabel       string
+	States           []AnalyticsStateData
+	Diagnostics      AnalyticsDiagnostics
+	OccupancyChart   ChartData
+	PreferenceChart  ChartData
+	ChartLegendItems []ChartLegendItem
+}
+
+// AnalyticsStateData carries one state's occupancy and preference series.
+type AnalyticsStateData struct {
+	OccupancyMean  string
+	PreferenceMean string
+	Label          string
+}
+
+// AnalyticsDiagnostics carries the diagnostics shown beside the analytics charts.
+type AnalyticsDiagnostics struct {
+	TotalHolding    string
+	TransitionCount string
+	FallbackBuckets int
+}
+
+// RawAnalyticsViewData packages the selected raw analytics slice for template rendering.
+type RawAnalyticsViewData struct {
+	HasData                bool
+	ModelID                string
+	QuarterLabel           string
+	ClockLabel             string
+	TotalHolding           string
+	TransitionCount        string
+	TotalHoldingChart      ChartData
+	TotalTransitionChart   ChartData
+	HoldingStates          []RawAnalyticsStateData
+	TransitionSeries       []RawAnalyticsTransitionData
+}
+
+// RawAnalyticsStateData carries one state's raw holding series.
+type RawAnalyticsStateData struct {
+	Label        string
+	TotalHolding string
+	HoldingChart ChartData
+}
+
+// RawAnalyticsTransitionData carries one transition's raw counter series.
+type RawAnalyticsTransitionData struct {
+	Label           string
+	TransitionTotal string
+	TransitionChart ChartData
+}
+
+// ChartData carries one serialized chart payload for the frontend renderer.
+type ChartData struct {
+	Kind    string
+	Payload string
+	Summary string
+}
+
+// ChartLegendItem describes one legend swatch for stacked state charts.
+type ChartLegendItem struct {
+	Label string
+	Color string
+}
+
+// quarterButtonClass returns the CSS class for selector buttons.
 func quarterButtonClass(selected bool) string {
 	if selected {
 		return "quarter-btn selected"
@@ -51,7 +163,159 @@ func quarterButtonClass(selected bool) string {
 	return "quarter-btn"
 }
 
-// ControlPage renders the detail view for one control and its heatmap controls.
+// AnalyticsPanel renders the selected analytics slice on the control page.
+templ AnalyticsPanel(data AnalyticsViewData) {
+	if data.HasData {
+		<div class="report-header">
+			<div>
+				<h3>Report</h3>
+				<p class="page-subtitle">Per-model diagnostics and inferred preference for { data.ClockLabel } in { data.QuarterLabel }.</p>
+			</div>
+		</div>
+		<div class="diagnostics-grid">
+			<div class="form-card">
+				<h4>Total holding time</h4>
+				<p>{ data.Diagnostics.TotalHolding }</p>
+			</div>
+			<div class="form-card">
+				<h4>User transitions</h4>
+				<p>{ data.Diagnostics.TransitionCount }</p>
+			</div>
+			<div class="form-card">
+				<h4>Fallback buckets</h4>
+				<p>{ fmt.Sprintf("%d", data.Diagnostics.FallbackBuckets) }</p>
+			</div>
+		</div>
+		<div class="summary-table-wrapper form-card">
+			<table class="snapshot-table">
+				<thead>
+					<tr>
+						<th>State</th>
+						<th>Mean actual occupancy</th>
+						<th>Mean inferred preference</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, state := range data.States {
+						<tr>
+							<td>{ state.Label }</td>
+							<td>{ state.OccupancyMean }</td>
+							<td>{ state.PreferenceMean }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if len(data.ChartLegendItems) > 0 {
+			<div class="chart-legend form-card">
+				for _, item := range data.ChartLegendItems {
+					<div class="legend-item">
+						<span class="legend-swatch" style={ "background:" + item.Color }></span>
+						<span>{ item.Label }</span>
+					</div>
+				}
+			</div>
+		}
+		<div class="analytics-grid analytics-grid-primary">
+			<div class="analytics-card analytics-card-wide">
+				<div class="card-meta">
+					<span class="badge">Actual occupancy</span>
+					<span>Stacked weekly distribution</span>
+				</div>
+				<p class="chart-label">Observed time allocation across all 2016 weekly buckets.</p>
+				@ChartCanvas(data.OccupancyChart)
+			</div>
+			<div class="analytics-card analytics-card-wide">
+				<div class="card-meta">
+					<span class="badge">Inferred preference</span>
+					<span>Stacked weekly stationary distribution</span>
+				</div>
+				<p class="chart-label">CTMC stationary share by state across the same weekly axis.</p>
+				@ChartCanvas(data.PreferenceChart)
+			</div>
+		</div>
+		<div class="analytics-grid">
+			for _, state := range data.States {
+				<div class="analytics-card">
+					<div class="card-meta">
+						<span class="badge">{ state.Label }</span>
+						<span>Mean weekly share</span>
+					</div>
+					<p class="chart-label">Actual occupancy: { state.OccupancyMean }</p>
+					<p class="chart-label">Inferred preference: { state.PreferenceMean }</p>
+				</div>
+			}
+		</div>
+	} else {
+		<p class="empty">No analytics data available for this model and quarter.</p>
+	}
+}
+
+// RawAnalyticsPanel renders the selected raw analytics slice on the control page.
+templ RawAnalyticsPanel(data RawAnalyticsViewData) {
+	if data.HasData {
+		<div class="report-header">
+			<div>
+				<h3>Raw Analytics</h3>
+				<p class="page-subtitle">Stored per-bucket holdings and transitions for { data.ClockLabel } in { data.QuarterLabel }.</p>
+			</div>
+		</div>
+		<div class="diagnostics-grid">
+			<div class="form-card">
+				<h4>Total holding time</h4>
+				<p>{ data.TotalHolding }</p>
+			</div>
+			<div class="form-card">
+				<h4>User transitions</h4>
+				<p>{ data.TransitionCount }</p>
+			</div>
+		</div>
+		<div class="analytics-grid analytics-grid-primary">
+			<div class="analytics-card analytics-card-wide">
+				<div class="card-meta">
+					<span class="badge">Total holding time</span>
+					<span>{ data.TotalHolding }</span>
+				</div>
+				<p class="chart-label">Summed across states on one 2016-bucket weekly axis.</p>
+				@ChartCanvas(data.TotalHoldingChart)
+			</div>
+			<div class="analytics-card analytics-card-wide">
+				<div class="card-meta">
+					<span class="badge">Total transitions</span>
+					<span>{ data.TransitionCount }</span>
+				</div>
+				<p class="chart-label">Summed across transition pairs on the same weekly axis.</p>
+				@ChartCanvas(data.TotalTransitionChart)
+			</div>
+		</div>
+		<div class="analytics-grid">
+			for _, state := range data.HoldingStates {
+				<div class="analytics-card">
+					<div class="card-meta">
+						<span class="badge">{ state.Label }</span>
+						<span>{ state.TotalHolding }</span>
+					</div>
+					<p class="chart-label">Raw holding millis</p>
+					@ChartCanvas(state.HoldingChart)
+				</div>
+			}
+			for _, transition := range data.TransitionSeries {
+				<div class="analytics-card">
+					<div class="card-meta">
+						<span class="badge">{ transition.Label }</span>
+						<span>{ transition.TransitionTotal }</span>
+					</div>
+					<p class="chart-label">Raw transition counts</p>
+					@ChartCanvas(transition.TransitionChart)
+				</div>
+			}
+		</div>
+	} else {
+		<p class="empty">No analytics data available for this model and quarter.</p>
+	}
+}
+
+// ControlPage renders the detail view for one control and its analytics report.
 templ ControlPage(data ControlPageData) {
 	@Layout(data.ControlID) {
 		<div class="control-header">
@@ -109,7 +373,7 @@ templ ControlPage(data ControlPageData) {
 			<div class="page-header">
 				<div>
 					<h2>Analytics View</h2>
-					<p class="page-subtitle">Choose which model-partitioned aggregate data to visualize.</p>
+					<p class="page-subtitle">Choose the model, quarter, clock, and analytics mode to inspect.</p>
 				</div>
 			</div>
 			<div class="quarter-selector">
@@ -121,34 +385,103 @@ templ ControlPage(data ControlPageData) {
 		if len(data.Quarters) > 0 {
 			<div class="quarter-selector">
 				for _, q := range data.Quarters {
-					<button
-						class={ quarterButtonClass(q.Selected) }
-						hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&modelId=%s&quarter=%d", url.QueryEscape(data.ControlID), url.QueryEscape(data.ModelID), q.QuarterIndex) }
-						hx-target="#heatmap-container"
-						hx-swap="innerHTML"
-					>
-						{ q.Label }
-					</button>
+					<a href={ templ.SafeURL(q.PageURL) } class={ quarterButtonClass(q.Selected) }>{ q.Label }</a>
 				}
 			</div>
 		}
-		<div id="heatmap-container">
-			if data.BucketJSON != "" {
-				@HeatmapCanvas(data.BucketJSON)
+		if len(data.ClockOptions) > 0 {
+			<div class="quarter-selector">
+				for _, clock := range data.ClockOptions {
+					<a href={ templ.SafeURL(clock.PageURL) } class={ quarterButtonClass(clock.Selected) }>{ clock.Label }</a>
+				}
+			</div>
+		}
+		if len(data.ModeOptions) > 0 {
+			<div class="quarter-selector">
+				for _, mode := range data.ModeOptions {
+					<a href={ templ.SafeURL(mode.PageURL) } class={ quarterButtonClass(mode.Selected) }>{ mode.Label }</a>
+				}
+			</div>
+		}
+		if data.AnalyticsMode == "report" && data.HasAggregates {
+			<form method="get" action={ templ.SafeURL(data.ReportOptions.Action) } class="form-card analytics-options-form">
+				<input type="hidden" name="model" value={ data.ReportOptions.ModelID }/>
+				<input type="hidden" name="quarter" value={ data.ReportOptions.Quarter }/>
+				<input type="hidden" name="clock" value={ data.ReportOptions.Clock }/>
+				<input type="hidden" name="mode" value={ data.ReportOptions.Mode }/>
+				<div class="page-header">
+					<div>
+						<h3>Report Parameters</h3>
+						<p class="page-subtitle">These controls map to the derived analytics API options.</p>
+					</div>
+				</div>
+				if data.ReportOptions.Error != "" {
+					<div class="form-errors">
+						<p>{ data.ReportOptions.Error }</p>
+					</div>
+				}
+				<div class="form-grid">
+					<label class="form-field">
+						<span>Smoothing</span>
+						<select name="smoothing">
+							<option value="gaussian" selected?={ data.ReportOptions.Smoothing == "gaussian" }>gaussian</option>
+							<option value="none" selected?={ data.ReportOptions.Smoothing == "none" }>none</option>
+						</select>
+					</label>
+					<label class="form-field">
+						<span>Kernel radius</span>
+						<input type="number" min="0" name="kernelRadius" value={ data.ReportOptions.KernelRadius } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
+					</label>
+					<label class="form-field">
+						<span>Kernel sigma</span>
+						<input type="number" min="0" step="0.1" name="kernelSigma" value={ data.ReportOptions.KernelSigma } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
+					</label>
+					<label class="form-field">
+						<span>Holding damping millis</span>
+						<input type="text" name="holdingDampingMillis" value={ data.ReportOptions.HoldingDampingMillis }/>
+					</label>
+					<label class="form-field">
+						<span>Transition damping count</span>
+						<input type="text" name="transitionDampingCount" value={ data.ReportOptions.TransitionDampingCount }/>
+					</label>
+				</div>
+				<div class="state-grid analytics-checkbox-grid">
+					<label class="form-field analytics-check">
+						<span>Include raw intermediates</span>
+						<input type="checkbox" name="include" value="raw" checked?={ data.ReportOptions.IncludeRaw }/>
+					</label>
+					<label class="form-field analytics-check">
+						<span>Include smoothed intermediates</span>
+						<input type="checkbox" name="include" value="smoothed" checked?={ data.ReportOptions.IncludeSmoothed }/>
+					</label>
+					<label class="form-field analytics-check">
+						<span>Include rate intermediates</span>
+						<input type="checkbox" name="include" value="rates" checked?={ data.ReportOptions.IncludeRates }/>
+					</label>
+				</div>
+				<div class="form-actions">
+					<button type="submit" class="btn">Apply report parameters</button>
+				</div>
+			</form>
+		}
+		<div id="analytics-container">
+			if data.AnalyticsMode == "raw" {
+				@RawAnalyticsPanel(data.RawAnalytics)
 			} else {
-				<p class="empty">No aggregate data available for this control.</p>
+				@AnalyticsPanel(data.Analytics)
 			}
 		</div>
 	}
 }
 
-// HeatmapCanvas renders the canvas container consumed by the client-side heatmap script.
-templ HeatmapCanvas(bucketJSON string) {
-	<div class="heatmap-wrapper">
-		<canvas class="heatmap" data-buckets={ bucketJSON } width="900" height="200"></canvas>
+// ChartCanvas renders one chart container consumed by the client-side chart script.
+templ ChartCanvas(chart ChartData) {
+	<div class="chart-wrapper">
+		<canvas class="weekly-chart" data-chart-kind={ chart.Kind } data-chart-payload={ chart.Payload } data-chart-summary={ chart.Summary } width="1200" height="260"></canvas>
 	</div>
 }
 
+// modelRowValue returns the model identifier to show in a row's input field.
 func modelRowValue(model ModelRowData) string {
 	if model.DraftModelID != "" {
 		return model.DraftModelID

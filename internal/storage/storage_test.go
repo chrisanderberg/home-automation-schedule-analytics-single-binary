@@ -11,6 +11,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
+// setAggregateValue writes one counter into a stored aggregate for storage tests.
 func setAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, value uint64) {
 	t.Helper()
 	if err := UpdateAggregate(ctx, db, key, numStates, func(blob []byte) error {
@@ -29,6 +30,7 @@ func setAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key Aggreg
 	}
 }
 
+// requireAggregateValue asserts one counter value inside a stored aggregate.
 func requireAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, want uint64) {
 	t.Helper()
 	data, err := GetAggregate(ctx, db, key, numStates)

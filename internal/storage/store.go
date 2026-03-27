@@ -61,6 +61,7 @@ func UpsertControl(ctx context.Context, db *sql.DB, control Control) error {
 	return err
 }
 
+// insertControl inserts a new control row and reports conflicts without updating existing rows.
 func insertControl(ctx context.Context, exec interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }, control Control) error {
@@ -120,6 +121,8 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 	err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? LIMIT 1`, previousControlID).Scan(&aggregateExists)
 	switch {
 	case err == nil:
+		// Once aggregates exist, only label-like metadata can change without
+		// invalidating the packed blob layout already stored for this control.
 		if existing.NumStates != control.NumStates || existing.ControlType != control.ControlType {
 			return ErrStructureLocked
 		}
@@ -145,6 +148,8 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 			return err
 		}
 	} else {
+		// Control renames are implemented by creating the destination row first and
+		// then moving aggregates and models so the change remains atomic.
 		row := tx.QueryRowContext(ctx, `SELECT 1 FROM controls WHERE control_id = ?`, control.ControlID)
 		var exists int
 		switch err := row.Scan(&exists); {
@@ -236,6 +241,7 @@ func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 	return controls, rows.Err()
 }
 
+// normalizeControlType maps legacy stored values onto the canonical control-type set.
 func normalizeControlType(controlType ControlType) ControlType {
 	normalized := strings.TrimSpace(string(controlType))
 	switch normalized {
@@ -273,6 +279,7 @@ func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, err
 	if err != nil {
 		return nil, err
 	}
+	// Aggregate-derived model IDs remain visible even before explicit metadata is created.
 	for _, key := range keys {
 		if _, ok := modelMap[key.ModelID]; !ok {
 			modelMap[key.ModelID] = Model{ControlID: controlID, ModelID: key.ModelID}
@@ -292,6 +299,7 @@ func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, err
 	return models, nil
 }
 
+// insertModel inserts a new model row and reports conflicts without updating existing rows.
 func insertModel(ctx context.Context, exec interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }, controlID, modelID string) error {
@@ -330,6 +338,8 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 	defer func() { _ = tx.Rollback() }()
 
 	if previousModelID != "" {
+		// Renames are allowed for models inferred only from aggregates, so the
+		// source lookup checks both explicit model rows and aggregate-backed presence.
 		var sourceExists int
 		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, previousModelID).Scan(&sourceExists)
 		switch {
@@ -369,6 +379,8 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 			return err
 		}
 	} else {
+		// Model-id renames must be conflict-free in both metadata and aggregate rows
+		// before the aggregate ownership can move to the new identifier.
 		var exists int
 		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, model.ModelID).Scan(&exists)
 		switch {
@@ -545,10 +557,12 @@ func UpdateAggregate(ctx context.Context, db *sql.DB, key AggregateKey, numState
 	return nil
 }
 
+// queryRower captures the query methods shared by database and transaction handles.
 type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
+// execContexter captures the exec methods shared by database and transaction handles.
 type execContexter interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
@@ -593,6 +607,8 @@ func updateAggregateWithQueryExec(
 		return err
 	}
 
+	// The final write is a single upsert, so callers see either the old blob or
+	// the fully updated blob, never an intermediate mutation.
 	_, err := execDB.ExecContext(
 		ctx,
 		`INSERT INTO aggregates (control_id, model_id, quarter_index, blob)

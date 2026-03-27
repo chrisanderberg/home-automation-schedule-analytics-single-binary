@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"home-automation-schedule-analytics-single-bin/internal/demodata"
 	"home-automation-schedule-analytics-single-bin/internal/domain"
+	"home-automation-schedule-analytics-single-bin/internal/ingest"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
@@ -155,8 +158,8 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	if !(pos10 < pos11 && pos11 < pos12) {
 		t.Fatalf("expected sorted quarter options, got body %q", body)
 	}
-	if !strings.Contains(body, `class="quarter-btn selected"`) || !strings.Contains(body, `hx-get="/partials/heatmap?controlId=mode&amp;modelId=default&amp;quarter=12"`) {
-		t.Fatalf("expected latest quarter to be selected")
+	if !strings.Contains(body, `class="quarter-btn selected"`) || !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=default&amp;quarter=12"`) {
+		t.Fatalf("expected latest quarter link to be selected")
 	}
 }
 
@@ -188,8 +191,8 @@ func TestControlPageEscapesQuarterRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), `hx-get="/partials/heatmap?controlId=mode%2Fscene&amp;modelId=default&amp;quarter=12"`) {
-		t.Fatalf("expected escaped quarter request, got body %q", w.Body.String())
+	if !strings.Contains(w.Body.String(), `href="/controls/mode%2Fscene?clock=utc&amp;model=default&amp;quarter=12"`) {
+		t.Fatalf("expected escaped quarter link, got body %q", w.Body.String())
 	}
 }
 
@@ -238,8 +241,11 @@ func TestControlPageSelectsRequestedModel(t *testing.T) {
 	if strings.Contains(body, "1972 Q3") {
 		t.Fatalf("expected quarter buttons only for selected model, got %q", body)
 	}
-	if !strings.Contains(body, `hx-get="/partials/heatmap?controlId=mode&amp;modelId=weekend&amp;quarter=12"`) {
-		t.Fatalf("expected weekend heatmap requests, got %q", body)
+	if !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=weekend&amp;quarter=12"`) {
+		t.Fatalf("expected weekend analytics link, got %q", body)
+	}
+	if !strings.Contains(body, "Inferred preference") {
+		t.Fatalf("expected inferred preference report content, got %q", body)
 	}
 }
 
@@ -275,8 +281,150 @@ func TestControlPageDefaultsToModelWithData(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, `hx-get="/partials/heatmap?controlId=mode&amp;modelId=weekend&amp;quarter=12"`) {
+	if !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=weekend&amp;quarter=12"`) {
 		t.Fatalf("expected model with data to be selected, got %q", body)
+	}
+}
+
+// TestControlPageRendersSeededDemoReport verifies the full report view renders seeded analytics content.
+func TestControlPageRendersSeededDemoReport(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	cfg := ingest.Config{
+		TimeZone:  "America/Los_Angeles",
+		Latitude:  37.77,
+		Longitude: -122.42,
+	}
+	if err := demodata.SeedDemoData(ctx, db, cfg); err != nil {
+		t.Fatalf("seed demo data: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc", nil)
+	req.SetPathValue("controlID", "living-room-scene")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Per-model diagnostics and inferred preference") {
+		t.Fatalf("expected report header, got %q", body)
+	}
+	if !strings.Contains(body, "Stacked weekly distribution") || !strings.Contains(body, "Stacked weekly stationary distribution") {
+		t.Fatalf("expected both report panels, got %q", body)
+	}
+	if !strings.Contains(body, "ambient") || !strings.Contains(body, "bright") || !strings.Contains(body, `class="weekly-chart"`) {
+		t.Fatalf("expected seeded state labels in report, got %q", body)
+	}
+}
+
+// TestControlPageCanRenderRawAnalytics verifies the control page can switch into raw analytics mode.
+func TestControlPageCanRenderRawAnalytics(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	cfg := ingest.Config{
+		TimeZone:  "America/Los_Angeles",
+		Latitude:  37.77,
+		Longitude: -122.42,
+	}
+	if err := demodata.SeedDemoData(ctx, db, cfg); err != nil {
+		t.Fatalf("seed demo data: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&mode=raw", nil)
+	req.SetPathValue("controlID", "living-room-scene")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Raw Analytics") {
+		t.Fatalf("expected raw analytics header, got %q", body)
+	}
+	if !strings.Contains(body, "Total holding time") || !strings.Contains(body, "Total transitions") {
+		t.Fatalf("expected raw analytics panels, got %q", body)
+	}
+}
+
+// TestControlPageShowsReportParameterControls verifies the report-mode UI exposes parameter controls.
+func TestControlPageShowsReportParameterControls(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	cfg := ingest.Config{
+		TimeZone:  "America/Los_Angeles",
+		Latitude:  37.77,
+		Longitude: -122.42,
+	}
+	if err := demodata.SeedDemoData(ctx, db, cfg); err != nil {
+		t.Fatalf("seed demo data: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw&include=rates", nil)
+	req.SetPathValue("controlID", "living-room-scene")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Report Parameters") {
+		t.Fatalf("expected report parameter form, got %q", body)
+	}
+	if !strings.Contains(body, `name="smoothing"`) || !strings.Contains(body, `name="holdingDampingMillis"`) {
+		t.Fatalf("expected smoothing and damping controls, got %q", body)
+	}
+	if !strings.Contains(body, `name="include" value="raw" checked`) || !strings.Contains(body, `name="include" value="rates" checked`) {
+		t.Fatalf("expected include checkboxes to reflect query params, got %q", body)
+	}
+}
+
+// TestControlPageRawModeEmbedsSameBucketsAsAPI verifies the raw-mode page uses the same bucket arrays as the raw API.
+func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	cfg := ingest.Config{
+		TimeZone:  "America/Los_Angeles",
+		Latitude:  37.77,
+		Longitude: -122.42,
+	}
+	if err := demodata.SeedDemoData(ctx, db, cfg); err != nil {
+		t.Fatalf("seed demo data: %v", err)
+	}
+
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter=224&clock=utc", nil)
+	apiW := httptest.NewRecorder()
+	HandleAnalyticsRaw(db).ServeHTTP(apiW, apiReq)
+	if apiW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", apiW.Code, apiW.Body.String())
+	}
+	var apiBody struct {
+		Clock struct {
+			HoldingMillis []struct {
+				Buckets []uint64 `json:"buckets"`
+			} `json:"holdingMillis"`
+		} `json:"clock"`
+	}
+	if err := json.Unmarshal(apiW.Body.Bytes(), &apiBody); err != nil {
+		t.Fatalf("decode api body: %v", err)
+	}
+	firstSeries, err := json.Marshal(apiBody.Clock.HoldingMillis[0].Buckets)
+	if err != nil {
+		t.Fatalf("marshal expected series: %v", err)
+	}
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&mode=raw", nil)
+	pageReq.SetPathValue("controlID", "living-room-scene")
+	pageW := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(pageW, pageReq)
+	if pageW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", pageW.Code, pageW.Body.String())
+	}
+	if !strings.Contains(pageW.Body.String(), string(firstSeries)) {
+		t.Fatalf("expected raw page to embed API bucket series %s", string(firstSeries))
 	}
 }
 

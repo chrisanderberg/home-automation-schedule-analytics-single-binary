@@ -94,6 +94,8 @@ func IngestTransition(ctx context.Context, db *sql.DB, cfg Config, input Transit
 			return err
 		}
 
+		// Every clock view writes into the same quarter-scoped blob, so one
+		// transition event stays analytically aligned across all time systems.
 		copy(data, b.Data())
 		return nil
 	})
@@ -109,6 +111,8 @@ func incrementTransitionCount(b *domain.Blob, fromState int, toState int, numSta
 	if err != nil {
 		return err
 	}
+	// Transition counters saturate instead of wrapping so pathological ingest
+	// volume cannot turn a large count into a small one.
 	if v == math.MaxUint64 {
 		return nil
 	}

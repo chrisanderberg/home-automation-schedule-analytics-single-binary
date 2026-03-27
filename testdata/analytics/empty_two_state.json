@@ -1,0 +1,27 @@
+{
+  "name": "empty_two_state",
+  "control": {
+    "controlId": "mode-empty",
+    "controlType": "radio buttons",
+    "numStates": 2,
+    "stateLabels": ["off", "on"]
+  },
+  "registeredModels": ["weekday"],
+  "aggregate": {
+    "modelId": "weekday",
+    "quarterIndex": 12
+  },
+  "reportRequests": [
+    {
+      "name": "default",
+      "query": {
+        "clock": "utc"
+      },
+      "expect": {
+        "occupancyBucketSumsToOne": true,
+        "preferenceBucketSumsToOne": true,
+        "fallbackBuckets": 2016
+      }
+    }
+  ]
+}

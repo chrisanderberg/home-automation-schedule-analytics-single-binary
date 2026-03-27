@@ -29,6 +29,8 @@ func decodeStrictJSON(r io.Reader, v any) error {
 		return err
 	}
 	var extra any
+	// API handlers accept exactly one JSON value so trailing objects or arrays do
+	// not silently turn malformed requests into partially accepted ones.
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return errMultipleJSONValues
 	}

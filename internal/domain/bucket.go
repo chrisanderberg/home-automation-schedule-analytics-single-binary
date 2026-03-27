@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// BucketSpan describes how much of an interval belongs to one weekly bucket.
 type BucketSpan struct {
 	Bucket int
 	Millis int64
@@ -42,6 +43,8 @@ func SplitIntervalUTC(startMs, endMs int64) ([]BucketSpan, error) {
 		if millis <= 0 {
 			return nil, ErrInvalidInterval
 		}
+		// Local bucket spans preserve real DST fold behavior, so repeated local
+		// clock labels are still tracked as distinct UTC-backed intervals.
 		spans = append(spans, BucketSpan{Bucket: bucket, Millis: millis})
 		cur = boundary
 	}
@@ -111,6 +114,8 @@ func nextBoundaryLocal(timestampMs int64, loc *time.Location) int64 {
 			return timestampMs
 		}
 		if nextBucket != bucket {
+			// The boundary search returns the earliest UTC instant that changes the
+			// local bucket, which is what preserves exact fold semantics.
 			for high.Sub(low) > time.Millisecond {
 				mid := low.Add(high.Sub(low) / 2)
 				midBucket, err := BucketAtLocal(mid.UnixMilli(), loc)

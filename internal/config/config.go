@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// Config carries the runtime settings loaded from the environment.
 type Config struct {
 	TimeZone  string
 	Location  *time.Location

@@ -8,6 +8,12 @@ continuous-time behavior, including continuous-time Markov-chain-style modeling
 of state transitions and kernel density estimation (KDE)-style smoothing where
 useful for understanding schedule preferences.
 
+The core analytical hypothesis is that raw time-in-state mostly reflects what
+the active automation model caused the system to do, while user-initiated
+transitions are corrective evidence about what the user actually wanted. The
+project therefore treats inferred preference, not raw occupancy, as the main
+reporting target.
+
 The domain model is organized around controls, states, model IDs, holding
 intervals, and user-initiated transitions. Aggregates are time-based and retain
 multiple clock interpretations of the same underlying behavior instead of
@@ -17,7 +23,9 @@ In this project, a model ID is not just an arbitrary partition key. It
 identifies a model-specific analytical partition for a control. Different
 models may produce different behavior for the same control, and the analytics
 are intended to preserve that distinction so time-in-state and transition
-patterns can be compared across models.
+patterns can be compared across models. CTMCs are intended to be estimated per
+model first, with any cross-model view treated as a derived comparison layer
+rather than the primary source of truth.
 
 ## Goals
 - Keep the project simple to run and review as a single binary.
@@ -27,6 +35,9 @@ patterns can be compared across models.
   and density-based schedule analysis.
 - Keep the project's multi-clock view of time so analysis can compare the same
   behavior across UTC, local, and solar-derived interpretations.
+- Treat the stationary distribution of the inferred CTMC as the primary
+  reported preference estimate for a control at a given time, while retaining
+  actual holding-time views as secondary diagnostics.
 - Capture new constraints and implementation lessons as the project evolves so
   future work stays consistent with what has already been learned.
 
@@ -47,9 +58,20 @@ patterns can be compared across models.
   control instead of flattening everything into one aggregate.
 - Holding intervals capture how long a control remains in one state.
 - Transitions capture user-initiated moves from one state to another.
+- KDE is intended to smooth sparse cyclic time-of-week statistics before CTMC
+  estimation rather than act as a stand-alone reporting output.
+- The stationary distribution of the inferred CTMC is the project's primary
+  notion of user preference for a given `(control, model, clock, time bucket)`.
+- Different models for the same control may show different raw occupancy
+  profiles, but their stationary-distribution-based preference estimates are
+  expected to converge for the same clock/time context if the inference is
+  working well.
+- The five clocks are not only parallel storage dimensions but competing
+  analytical coordinate systems whose inferred preference surfaces can be
+  compared.
 - The current UI surfaces a normalized UTC heatmap that sums holding time
   across states, while the stored aggregates retain richer per-state,
-  per-clock, and transition data for future analysis.
+  per-clock, and transition data for richer reporting and future analysis.
 
 ## Current instruction model
 - `AGENTS.md` defines how agents should operate in this worktree.

@@ -24,6 +24,7 @@ import (
 var embeddedStaticFS embed.FS
 
 // main exits non-zero when the application cannot be started cleanly.
+// main starts the HTTP application.
 func main() {
 	if err := run(); err != nil {
 		log.Printf("fatal: %v", err)
@@ -32,6 +33,7 @@ func main() {
 }
 
 // run loads configuration, initializes dependencies, and serves HTTP until shutdown.
+// run loads configuration, opens storage, and serves the application.
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
