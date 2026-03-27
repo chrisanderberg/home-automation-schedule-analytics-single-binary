@@ -147,7 +147,7 @@ def infer_preference(smoothed_holding, smoothed_transitions, parameters):
                 next_values[to_state] += weight * p
             next_values[from_state] += weight * (1.0 - row_sum)
         next_values = normalize(next_values)
-        max_delta = max(abs(a - b) for a, b in zip(next_values, current, strict=True))
+        max_delta = max(abs(a - b) for a, b in zip(next_values, current))
         current = next_values
         if max_delta < POWER_TOLERANCE:
             return current, rates, False
