@@ -16,11 +16,11 @@ def load_json(path):
         return json.load(fh)
 
 
-def fetch_json(url):
+def fetch_json(url, timeout=10):
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"unsupported URL scheme: {parsed.scheme!r}")
-    with urllib.request.urlopen(url) as resp:
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
         return json.load(resp)
 
 
@@ -147,7 +147,7 @@ def infer_preference(smoothed_holding, smoothed_transitions, parameters):
                 next_values[to_state] += weight * p
             next_values[from_state] += weight * (1.0 - row_sum)
         next_values = normalize(next_values)
-        max_delta = max(abs(a - b) for a, b in zip(next_values, current))
+        max_delta = max(abs(a - b) for a, b in zip(next_values, current, strict=True))
         current = next_values
         if max_delta < POWER_TOLERANCE:
             return current, rates, False
@@ -381,4 +381,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except AssertionError as exc:
         print(f"reference check failed: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
