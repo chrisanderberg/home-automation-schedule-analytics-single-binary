@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -601,7 +602,7 @@ func TestAnalyticsReturnsSeededDemoScenario(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter=224&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	w := httptest.NewRecorder()
 	HandleAnalytics(db).ServeHTTP(w, req)
 
@@ -612,7 +613,7 @@ func TestAnalyticsReturnsSeededDemoScenario(t *testing.T) {
 	if !strings.Contains(body, `"controlId":"living-room-scene"`) || !strings.Contains(body, `"clockSlug":"utc"`) {
 		t.Fatalf("expected seeded analytics payload, got %q", body)
 	}
-	if !strings.Contains(body, `"Label":"bright"`) && !strings.Contains(body, `"label":"bright"`) {
+	if !strings.Contains(body, `"label":"bright"`) {
 		t.Fatalf("expected state labels in analytics payload, got %q", body)
 	}
 }

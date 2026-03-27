@@ -59,7 +59,7 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Snapshots</h1><div class=\"snapshot-actions\"><button class=\"btn\" hx-post=\"/api/v1/snapshots\" hx-on::after-request=\"setTimeout(function(){ location.reload(); }, 500)\">Export Snapshot</button></div><div id=\"snapshot-list\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Snapshots</h1><div class=\"snapshot-actions\"><button class=\"btn\" hx-post=\"/api/v1/snapshots\" hx-indicator=\"#snapshot-export-status\" hx-on:click=\"this.disabled = true; this.dataset.originalText = this.textContent; this.textContent = 'Exporting...';\" hx-on::after-request=\"this.disabled = false; this.textContent = this.dataset.originalText || 'Export Snapshot'; if (event.detail.successful) { location.reload(); }\">Export Snapshot</button> <span id=\"snapshot-export-status\" class=\"htmx-indicator\">Exporting...</span></div><div id=\"snapshot-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -81,7 +81,7 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 					var templ_7745c5c3_Var3 string
 					templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(s.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 48, Col: 20}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 51, Col: 20}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 					if templ_7745c5c3_Err != nil {
@@ -94,7 +94,7 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(s.Size)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 49, Col: 20}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 52, Col: 20}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -107,7 +107,7 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(s.ModTime)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 50, Col: 23}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 53, Col: 23}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -126,7 +126,7 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("... and %d more", len(snapshots)-50))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 55, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/snapshot.templ`, Line: 58, Col: 75}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {

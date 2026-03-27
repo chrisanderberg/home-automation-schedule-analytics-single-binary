@@ -116,16 +116,16 @@ type AnalyticsDiagnostics struct {
 
 // RawAnalyticsViewData packages the selected raw analytics slice for template rendering.
 type RawAnalyticsViewData struct {
-	HasData                bool
-	ModelID                string
-	QuarterLabel           string
-	ClockLabel             string
-	TotalHolding           string
-	TransitionCount        string
-	TotalHoldingChart      ChartData
-	TotalTransitionChart   ChartData
-	HoldingStates          []RawAnalyticsStateData
-	TransitionSeries       []RawAnalyticsTransitionData
+	HasData              bool
+	ModelID              string
+	QuarterLabel         string
+	ClockLabel           string
+	TotalHolding         string
+	TransitionCount      string
+	TotalHoldingChart    ChartData
+	TotalTransitionChart ChartData
+	HoldingStates        []RawAnalyticsStateData
+	TransitionSeries     []RawAnalyticsTransitionData
 }
 
 // RawAnalyticsStateData carries one state's raw holding series.
@@ -438,11 +438,11 @@ templ ControlPage(data ControlPageData) {
 					</label>
 					<label class="form-field">
 						<span>Holding damping millis</span>
-						<input type="text" name="holdingDampingMillis" value={ data.ReportOptions.HoldingDampingMillis }/>
+						<input type="number" min="0" step="any" inputmode="decimal" name="holdingDampingMillis" value={ data.ReportOptions.HoldingDampingMillis }/>
 					</label>
 					<label class="form-field">
 						<span>Transition damping count</span>
-						<input type="text" name="transitionDampingCount" value={ data.ReportOptions.TransitionDampingCount }/>
+						<input type="number" min="0" step="any" inputmode="decimal" name="transitionDampingCount" value={ data.ReportOptions.TransitionDampingCount }/>
 					</label>
 				</div>
 				<div class="state-grid analytics-checkbox-grid">
@@ -477,7 +477,7 @@ templ ControlPage(data ControlPageData) {
 // ChartCanvas renders one chart container consumed by the client-side chart script.
 templ ChartCanvas(chart ChartData) {
 	<div class="chart-wrapper">
-		<canvas class="weekly-chart" data-chart-kind={ chart.Kind } data-chart-payload={ chart.Payload } data-chart-summary={ chart.Summary } width="1200" height="260"></canvas>
+		<canvas class="weekly-chart" role="img" aria-label={ chart.Summary } data-chart-kind={ chart.Kind } data-chart-payload={ chart.Payload } data-chart-summary={ chart.Summary } width="1200" height="260"></canvas>
 	</div>
 }
 

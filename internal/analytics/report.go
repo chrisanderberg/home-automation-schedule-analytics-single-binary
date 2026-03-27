@@ -406,6 +406,7 @@ func buildDerivedClockReport(rawClock RawClockReport, opts ReportOptions) Derive
 		smoothedTransitions[transition.FromState][transition.ToState] = smoothSeries(uint64sToFloat64(transition.Buckets), opts)
 		ratesByTransition[transition.FromState][transition.ToState] = make([]float64, domain.BucketsPerWeek)
 	}
+	rawTransitionBuckets := rawTransitionBucketsByPair(rawClock)
 
 	diagnostics := Diagnostics{}
 	for bucket := 0; bucket < domain.BucketsPerWeek; bucket++ {
@@ -422,7 +423,7 @@ func buildDerivedClockReport(rawClock RawClockReport, opts ReportOptions) Derive
 					continue
 				}
 				smoothedTransitionBucket[fromState][toState] = smoothedTransitions[fromState][toState][bucket]
-				diagnostics.TransitionCount += float64(rawTransitionBucket(rawClock, fromState, toState)[bucket])
+				diagnostics.TransitionCount += float64(rawTransitionBuckets[fromState][toState][bucket])
 			}
 		}
 
@@ -738,13 +739,19 @@ func uint64sToFloat64(values []uint64) []float64 {
 	return result
 }
 
-func rawTransitionBucket(clock RawClockReport, fromState, toState int) []uint64 {
-	for _, transition := range clock.TransitionCounts {
-		if transition.FromState == fromState && transition.ToState == toState {
-			return transition.Buckets
+func rawTransitionBucketsByPair(clock RawClockReport) [][][]uint64 {
+	numStates := len(clock.HoldingMillis)
+	pairs := make([][][]uint64, numStates)
+	for fromState := 0; fromState < numStates; fromState++ {
+		pairs[fromState] = make([][]uint64, numStates)
+		for toState := 0; toState < numStates; toState++ {
+			pairs[fromState][toState] = make([]uint64, domain.BucketsPerWeek)
 		}
 	}
-	return make([]uint64, domain.BucketsPerWeek)
+	for _, transition := range clock.TransitionCounts {
+		pairs[transition.FromState][transition.ToState] = transition.Buckets
+	}
+	return pairs
 }
 
 func cloneRawStateSeries(values []RawStateBuckets) []RawStateBuckets {

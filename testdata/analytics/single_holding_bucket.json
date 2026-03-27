@@ -30,8 +30,7 @@
         "exactSeries": [
           { "section": "occupancy", "state": 0, "bucket": 0, "want": 1.0, "tolerance": 0.000001 },
           { "section": "occupancy", "state": 1, "bucket": 0, "want": 0.0, "tolerance": 0.000001 },
-          { "section": "preference", "state": 0, "bucket": 0, "want": 1.0, "tolerance": 0.000001 },
-          { "section": "rate", "fromState": 0, "toState": 1, "bucket": 0, "want": 0.0, "tolerance": 0.000001 }
+          { "section": "preference", "state": 0, "bucket": 0, "want": 1.0, "tolerance": 0.000001 }
         ],
         "zeroSeries": [
           { "section": "rate", "fromState": 0, "toState": 1, "bucket": 0 }

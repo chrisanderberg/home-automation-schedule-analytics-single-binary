@@ -44,7 +44,12 @@ def parse_args():
 
 def get_clock_payload(payload, requested_clock):
     if "clock" in payload:
-        return payload["clock"]
+        clock = payload["clock"]
+        if clock.get("clockSlug") != requested_clock:
+            raise ValueError(
+                f"clock slug mismatch: payload has {clock.get('clockSlug')!r} but requested {requested_clock!r}"
+            )
+        return clock
     for clock in payload.get("clocks", []):
         if clock["clockSlug"] == requested_clock:
             return clock
@@ -150,7 +155,10 @@ def infer_preference(smoothed_holding, smoothed_transitions, parameters):
 
 
 def expected_from_raw(raw_payload, report_payload):
-    clock_slug = get_clock_payload(report_payload, report_payload["clock"]["clockSlug"])["clockSlug"] if "clock" in report_payload else report_payload["clocks"][0]["clockSlug"]
+    if "clock" in report_payload:
+        clock_slug = report_payload["clock"]["clockSlug"]
+    else:
+        clock_slug = report_payload["clocks"][0]["clockSlug"]
     raw_clock = get_clock_payload(raw_payload, clock_slug)
     report_clock = get_clock_payload(report_payload, clock_slug)
     parameters = report_payload["parameters"]
@@ -197,6 +205,8 @@ def expected_from_raw(raw_payload, report_payload):
         "smoothed_transition": smoothed_transition,
         "rates": rates_by_transition,
         "fallback_buckets": fallback_buckets,
+        "total_holding_millis": sum(sum(state) for state in holding_series),
+        "transition_count": sum(sum(series) for series in transition_series.values()),
         "clock": report_clock,
     }
 
@@ -217,17 +227,42 @@ def compare_report(raw_payload, report_payload):
     expected = expected_from_raw(raw_payload, report_payload)
     report_clock = expected["clock"]
 
-    for state_idx, series in enumerate(report_clock["occupancySeries"]):
+    occupancy_series = report_clock.get("occupancySeries")
+    if occupancy_series is None:
+        raise AssertionError("clock payload missing occupancySeries")
+    if len(occupancy_series) != len(expected["occupancy"]):
+        raise AssertionError(
+            f"occupancySeries length mismatch {len(occupancy_series)} != {len(expected['occupancy'])}"
+        )
+    for state_idx, series in enumerate(occupancy_series):
+        if series.get("state") != state_idx:
+            raise AssertionError(f"occupancy state mismatch at index {state_idx}: got {series.get('state')}")
         compare_series(expected["occupancy"][state_idx], series["buckets"], f"occupancy state {state_idx}")
-    for state_idx, series in enumerate(report_clock["preferenceSeries"]):
+
+    preference_series = report_clock.get("preferenceSeries")
+    if preference_series is None:
+        raise AssertionError("clock payload missing preferenceSeries")
+    if len(preference_series) != len(expected["preference"]):
+        raise AssertionError(
+            f"preferenceSeries length mismatch {len(preference_series)} != {len(expected['preference'])}"
+        )
+    for state_idx, series in enumerate(preference_series):
+        if series.get("state") != state_idx:
+            raise AssertionError(f"preference state mismatch at index {state_idx}: got {series.get('state')}")
         compare_series(expected["preference"][state_idx], series["buckets"], f"preference state {state_idx}")
 
     diagnostics = report_clock.get("diagnostics")
-    if diagnostics is not None:
-        if diagnostics["fallbackBuckets"] != expected["fallback_buckets"]:
-            raise AssertionError(
-                f"fallbackBuckets: got {diagnostics['fallbackBuckets']} want {expected['fallback_buckets']}"
-            )
+    if diagnostics is None:
+        raise AssertionError("clock payload missing diagnostics")
+    for key in ("fallbackBuckets", "totalHoldingMillis", "transitionCount"):
+        if key not in diagnostics:
+            raise AssertionError(f"diagnostics missing {key}")
+    if diagnostics["fallbackBuckets"] != expected["fallback_buckets"]:
+        raise AssertionError(
+            f"fallbackBuckets: got {diagnostics['fallbackBuckets']} want {expected['fallback_buckets']}"
+        )
+    require_close("totalHoldingMillis", diagnostics["totalHoldingMillis"], expected["total_holding_millis"])
+    require_close("transitionCount", diagnostics["transitionCount"], expected["transition_count"])
 
     intermediates = report_clock.get("intermediates") or {}
     if "smoothedHoldingMillis" in intermediates:
@@ -299,7 +334,7 @@ def self_test():
             "clockSlug": "utc",
             "occupancySeries": [],
             "preferenceSeries": [],
-            "diagnostics": {"fallbackBuckets": 0},
+            "diagnostics": {"fallbackBuckets": 0, "totalHoldingMillis": 0, "transitionCount": 0},
             "intermediates": {"transitionRates": []},
         },
     }
@@ -311,6 +346,8 @@ def self_test():
         {"state": idx, "buckets": buckets} for idx, buckets in enumerate(expected["preference"])
     ]
     report_payload["clock"]["diagnostics"]["fallbackBuckets"] = expected["fallback_buckets"]
+    report_payload["clock"]["diagnostics"]["totalHoldingMillis"] = expected["total_holding_millis"]
+    report_payload["clock"]["diagnostics"]["transitionCount"] = expected["transition_count"]
     report_payload["clock"]["intermediates"]["transitionRates"] = [
         {"fromState": from_state, "toState": to_state, "buckets": buckets}
         for (from_state, to_state), buckets in sorted(expected["rates"].items())

@@ -11,7 +11,10 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
-const DefaultModelID = "weekday-v1"
+const (
+	DefaultModelID      = "weekday-v1"
+	DefaultQuarterIndex = 224
+)
 
 // HoldingSeed describes one demo holding interval to ingest.
 type HoldingSeed struct {
@@ -54,7 +57,7 @@ func SeedDemoData(ctx context.Context, db *sql.DB, cfg ingest.Config) error {
 		},
 	}
 	for _, control := range controls {
-		if err := storage.SaveControl(ctx, db, "", control); err != nil {
+		if err := storage.SaveControl(ctx, db, "", control); err != nil && !errors.Is(err, storage.ErrConflict) {
 			return fmt.Errorf("save control %s: %w", control.ControlID, err)
 		}
 		if err := storage.SaveModel(ctx, db, control.ControlID, "", storage.Model{ModelID: DefaultModelID}); err != nil && !errors.Is(err, storage.ErrConflict) {

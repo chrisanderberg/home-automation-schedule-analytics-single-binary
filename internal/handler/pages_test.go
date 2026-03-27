@@ -299,7 +299,7 @@ func TestControlPageRendersSeededDemoReport(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
 	HandleControlPage(db).ServeHTTP(w, req)
@@ -332,7 +332,7 @@ func TestControlPageCanRenderRawAnalytics(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&mode=raw", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&mode=raw", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
 	HandleControlPage(db).ServeHTTP(w, req)
@@ -362,7 +362,7 @@ func TestControlPageShowsReportParameterControls(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw&include=rates", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw&include=rates", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
 	HandleControlPage(db).ServeHTTP(w, req)
@@ -395,7 +395,7 @@ func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter=224&clock=utc", nil)
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	apiW := httptest.NewRecorder()
 	HandleAnalyticsRaw(db).ServeHTTP(apiW, apiReq)
 	if apiW.Code != http.StatusOK {
@@ -416,7 +416,7 @@ func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
 		t.Fatalf("marshal expected series: %v", err)
 	}
 
-	pageReq := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter=224&clock=utc&mode=raw", nil)
+	pageReq := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&mode=raw", nil)
 	pageReq.SetPathValue("controlID", "living-room-scene")
 	pageW := httptest.NewRecorder()
 	HandleControlPage(db).ServeHTTP(pageW, pageReq)

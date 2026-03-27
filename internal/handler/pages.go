@@ -388,6 +388,7 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 	selectedClock := query.Get("clock")
 	reportOpts, reportOptsErr := parseReportOptions(r)
 	if reportOptsErr != nil {
+		log.Printf("parse report options for control %s: %v", control.ControlID, reportOptsErr)
 		reportOpts = analytics.DefaultReportOptions()
 	}
 	if selectedModelID != "" && selectedQuarter >= 0 {
@@ -626,23 +627,6 @@ func buildRawAnalyticsViewData(report analytics.RawReport, selected analytics.Ra
 	return data
 }
 
-// marshalFloatSeries serializes a float series for embedding into template markup.
-func marshalFloatSeries(values []float64) string {
-	jsonBytes, err := json.Marshal(values)
-	if err != nil {
-		return "[]"
-	}
-	return string(jsonBytes)
-}
-
-func marshalUintSeries(values []uint64) string {
-	jsonBytes, err := json.Marshal(values)
-	if err != nil {
-		return "[]"
-	}
-	return string(jsonBytes)
-}
-
 func sumUint64Series(values []uint64) uint64 {
 	var total uint64
 	for _, value := range values {
@@ -652,7 +636,7 @@ func sumUint64Series(values []uint64) uint64 {
 }
 
 func addUint64Series(dst, src []uint64) {
-	for i := range dst {
+	for i := range min(len(dst), len(src)) {
 		dst[i] += src[i]
 	}
 }

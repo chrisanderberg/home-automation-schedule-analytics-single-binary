@@ -14,10 +14,10 @@ test-analytics: generate
 	go test ./internal/analytics ./internal/handler
 
 test-analytics-golden: generate
-	go test ./internal/handler -run TestAnalyticsGoldenFixtures ./internal/handler
+	go test ./internal/handler -run TestAnalyticsGoldenFixtures
 
 test-ui-parity: generate
-	go test ./internal/handler -run 'TestControlPage(RawModeEmbedsSameBucketsAsAPI|CanRenderRawAnalytics|ShowsReportParameterControls)' ./internal/handler
+	go test ./internal/handler -run 'TestControlPage(RawModeEmbedsSameBucketsAsAPI|CanRenderRawAnalytics|ShowsReportParameterControls)'
 
 test-analytics-reference:
 	python3 scripts/check_analytics.py --self-test

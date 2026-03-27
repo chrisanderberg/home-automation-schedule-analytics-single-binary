@@ -25,10 +25,13 @@ templ SnapshotPage(snapshots []SnapshotEntry) {
 			<button
 				class="btn"
 				hx-post="/api/v1/snapshots"
-				hx-on::after-request="setTimeout(function(){ location.reload(); }, 500)"
+				hx-indicator="#snapshot-export-status"
+				hx-on:click="this.disabled = true; this.dataset.originalText = this.textContent; this.textContent = 'Exporting...';"
+				hx-on::after-request="this.disabled = false; this.textContent = this.dataset.originalText || 'Export Snapshot'; if (event.detail.successful) { location.reload(); }"
 			>
 				Export Snapshot
 			</button>
+			<span id="snapshot-export-status" class="htmx-indicator">Exporting...</span>
 		</div>
 		<div id="snapshot-list">
 			if len(snapshots) == 0 {

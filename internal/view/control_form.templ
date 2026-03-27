@@ -34,6 +34,14 @@ func controlTypeIsSlider(current string) bool {
 	return current == "sliders"
 }
 
+// controlFormNumStates returns the effective state count rendered by the form.
+func controlFormNumStates(form ControlFormData) int {
+	if controlTypeIsSlider(form.ControlType) {
+		return 6
+	}
+	return form.NumStates
+}
+
 // controlStateIndexes returns the fixed list of state field indexes rendered by the form.
 func controlStateIndexes() []int {
 	return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
@@ -95,10 +103,13 @@ templ ControlForm(data ControlFormPageData) {
 			<label class="form-field">
 				<span>Possible states</span>
 				if data.LockedStructure {
-					<input type="hidden" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) }/>
-					<input type="text" value={ fmt.Sprintf("%d", data.Form.NumStates) } readonly/>
+					<input type="hidden" name="numStates" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) }/>
+					<input type="text" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) } readonly/>
+				} else if controlTypeIsSlider(data.Form.ControlType) {
+					<input type="hidden" name="numStates" value="6"/>
+					<input type="text" value="6" readonly/>
 				} else {
-					<input type="number" min="2" max="10" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) } required/>
+					<input type="number" min="2" max="10" name="numStates" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) } required/>
 				}
 			</label>
 		</div>
@@ -108,13 +119,13 @@ templ ControlForm(data ControlFormPageData) {
 		}
 		<div class="state-grid">
 			for _, idx := range controlStateIndexes() {
-				<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
+				<label class={ stateFieldClass(controlStateEnabled(controlFormNumStates(data.Form), idx)) }>
 					<span>{ fmt.Sprintf("State %d label", idx+1) }</span>
 					<input
 						type="text"
 						name="stateLabel"
 						value={ controlStateLabel(data.Form.StateLabels, idx) }
-						disabled?={ !controlStateEnabled(data.Form.NumStates, idx) }
+						disabled?={ !controlStateEnabled(controlFormNumStates(data.Form), idx) }
 					/>
 				</label>
 			}

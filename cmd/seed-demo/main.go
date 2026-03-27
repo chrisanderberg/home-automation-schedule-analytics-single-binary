@@ -62,6 +62,7 @@ func run() error {
 
 // ensureEmptyDatabase rejects seeding into a database that already has controls.
 func ensureEmptyDatabase(ctx context.Context, db *sql.DB) error {
+	// tables is a controlled list; do not accept user input here.
 	tables := []string{"controls", "models", "aggregates"}
 	counts := make(map[string]int, len(tables))
 	for _, table := range tables {
