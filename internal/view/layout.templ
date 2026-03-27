@@ -1,7 +1,23 @@
 package view
 
+import "strings"
+
+// navLinkClass returns "active" when the current path matches the link's path.
+func navLinkClass(currentPath, linkPath string) string {
+	if linkPath == "/" {
+		if currentPath == "/" || strings.HasPrefix(currentPath, "/controls") {
+			return "active"
+		}
+		return ""
+	}
+	if strings.HasPrefix(currentPath, linkPath) {
+		return "active"
+	}
+	return ""
+}
+
 // Layout wraps each page with the shared shell, assets, and navigation.
-templ Layout(title string) {
+templ Layout(title string, currentPath string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -19,8 +35,8 @@ templ Layout(title string) {
 				<div class="nav-inner">
 					<a href="/" class="nav-brand">Schedule Analytics</a>
 					<div class="nav-links">
-						<a href="/">Controls</a>
-						<a href="/snapshots">Snapshots</a>
+						<a href="/" class={ navLinkClass(currentPath, "/") }>Controls</a>
+						<a href="/snapshots" class={ navLinkClass(currentPath, "/snapshots") }>Snapshots</a>
 					</div>
 				</div>
 			</nav>

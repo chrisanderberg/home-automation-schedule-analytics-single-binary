@@ -158,7 +158,7 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	if !(pos10 < pos11 && pos11 < pos12) {
 		t.Fatalf("expected sorted quarter options, got body %q", body)
 	}
-	if !strings.Contains(body, `class="quarter-btn selected"`) || !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=default&amp;quarter=12"`) {
+	if !strings.Contains(body, `class="selector-pill selected"`) || !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=default&amp;quarter=12"`) {
 		t.Fatalf("expected latest quarter link to be selected")
 	}
 }

@@ -14,7 +14,7 @@ type ControlWithStats struct {
 
 // HomePage renders the top-level control listing view.
 templ HomePage(controls []ControlWithStats) {
-	@Layout("Home") {
+	@Layout("Home", "/") {
 		<div class="page-header">
 			<div>
 				<h1>Controls</h1>
@@ -30,7 +30,7 @@ templ HomePage(controls []ControlWithStats) {
 					<a href={ templ.SafeURL(fmt.Sprintf("/controls/%s", url.PathEscape(c.ControlID))) } class="card">
 						<h2 class="card-title">{ c.ControlID }</h2>
 						<div class="card-meta">
-							<span class="badge">{ c.ControlType }</span>
+							<span class="badge badge-type">{ c.ControlType }</span>
 							<span>{ fmt.Sprintf("%d states", c.NumStates) }</span>
 						</div>
 						if len(c.StateLabels) > 0 {
