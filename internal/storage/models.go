@@ -1,5 +1,6 @@
 package storage
 
+// ControlType identifies which UI contract a control follows.
 type ControlType string
 
 const (
@@ -7,6 +8,7 @@ const (
 	ControlTypeSliders      ControlType = "sliders"
 )
 
+// Control stores the persisted metadata for one configurable control.
 type Control struct {
 	ControlID   string
 	ControlType ControlType
@@ -14,11 +16,13 @@ type Control struct {
 	StateLabels []string
 }
 
+// Model stores optional metadata for one model identifier on a control.
 type Model struct {
 	ControlID string
 	ModelID   string
 }
 
+// AggregateKey identifies one aggregate blob by control, model, and quarter.
 type AggregateKey struct {
 	ControlID    string
 	ModelID      string

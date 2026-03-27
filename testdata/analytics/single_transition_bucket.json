@@ -1,0 +1,37 @@
+{
+  "name": "single_transition_bucket",
+  "control": {
+    "controlId": "mode-trans",
+    "controlType": "radio buttons",
+    "numStates": 2,
+    "stateLabels": ["off", "on"]
+  },
+  "registeredModels": ["weekday"],
+  "aggregate": {
+    "modelId": "weekday",
+    "quarterIndex": 12,
+    "holdings": [
+      { "clock": "utc", "state": 0, "bucket": 0, "value": 300000 },
+      { "clock": "utc", "state": 1, "bucket": 0, "value": 300000 }
+    ],
+    "transitions": [
+      { "clock": "utc", "fromState": 0, "toState": 1, "bucket": 0, "value": 2 }
+    ]
+  },
+  "reportRequests": [
+    {
+      "name": "damped_default",
+      "query": {
+        "clock": "utc",
+        "include": ["rates"]
+      },
+      "expect": {
+        "occupancyBucketSumsToOne": true,
+        "preferenceBucketSumsToOne": true,
+        "positiveSeries": [
+          { "section": "rate", "fromState": 0, "toState": 1, "bucket": 0 }
+        ]
+      }
+    }
+  ]
+}

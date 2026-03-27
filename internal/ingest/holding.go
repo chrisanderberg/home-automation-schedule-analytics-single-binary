@@ -146,6 +146,8 @@ func applyHoldingClockSpans(b *domain.Blob, numStates int, state int, clock int,
 		if s.Millis < 0 {
 			return fmt.Errorf("%w: negative holding millis for bucket %d", ErrInvalidInput, s.Bucket)
 		}
+		// Holding counters saturate instead of overflowing so a bad or repeated
+		// ingest event cannot wrap persisted time backward.
 		add := uint64(s.Millis)
 		if add > math.MaxUint64-v {
 			add = math.MaxUint64 - v

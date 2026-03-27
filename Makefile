@@ -1,6 +1,6 @@
 BINARY := home-automation-schedule-analytics
 
-.PHONY: all build test run generate clean fmt check-tools
+.PHONY: all build test test-analytics test-analytics-golden test-ui-parity test-analytics-reference run generate clean fmt check-tools
 
 all: build
 
@@ -10,8 +10,23 @@ build: generate
 test: generate
 	go test ./...
 
+test-analytics: generate
+	go test ./internal/analytics ./internal/handler
+
+test-analytics-golden: generate
+	go test ./internal/handler -run TestAnalyticsGoldenFixtures
+
+test-ui-parity: generate
+	go test ./internal/handler -run 'TestControlPage(RawModeEmbedsSameBucketsAsAPI|CanRenderRawAnalytics|ShowsReportParameterControls)'
+
+test-analytics-reference:
+	python3 scripts/check_analytics.py --self-test
+
 run: generate
 	go run .
+
+seed-demo:
+	go run ./cmd/seed-demo
 
 check-tools:
 	@command -v templ >/dev/null 2>&1 || { echo "templ is required but was not found in PATH. Install it before running make generate or make fmt."; exit 1; }

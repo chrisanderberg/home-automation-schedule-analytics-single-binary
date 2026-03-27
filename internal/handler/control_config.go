@@ -20,6 +20,7 @@ const (
 var defaultSliderLabels = []string{"min", "trans 1", "trans 2", "trans 3", "trans 4", "max"}
 var defaultRadioButtonLabels = []string{"on", "off"}
 
+// controlInput is the normalized control form payload shared by API and page handlers.
 type controlInput struct {
 	ControlID   string
 	ControlType string
@@ -27,6 +28,7 @@ type controlInput struct {
 	StateLabels []string
 }
 
+// clampStateCount limits free-form state counts to the supported range.
 func clampStateCount(raw int) int {
 	if raw < 0 {
 		return 0
@@ -37,6 +39,7 @@ func clampStateCount(raw int) int {
 	return raw
 }
 
+// validateControlInput converts a control form payload into a validated storage model.
 func validateControlInput(input controlInput) (storage.Control, string) {
 	controlID := strings.TrimSpace(input.ControlID)
 	if controlID == "" {
@@ -56,6 +59,8 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 	case "slider", "continuous":
 		controlType = string(storage.ControlTypeSliders)
 	}
+	// Validation normalizes legacy aliases up front so the rest of the system
+	// only has to reason about the canonical control-type vocabulary.
 	if controlType != string(storage.ControlTypeRadioButtons) && controlType != string(storage.ControlTypeSliders) {
 		return storage.Control{}, "invalid controlType"
 	}
@@ -86,6 +91,7 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 	}, ""
 }
 
+// parseControlForm reads and validates the control form submission.
 func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, string) {
 	if err := r.ParseForm(); err != nil {
 		return storage.Control{}, view.ControlFormData{}, "invalid form submission"
@@ -112,6 +118,8 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 	}
 
 	if form.ControlType == string(storage.ControlTypeSliders) {
+		// Slider controls always expose the fixed six-state analytical shape, so
+		// blank or missing labels are completed before validation runs.
 		if len(form.StateLabels) < len(defaultSliderLabels) {
 			form.StateLabels = append(form.StateLabels, defaultSliderLabels[len(form.StateLabels):]...)
 		}
@@ -122,6 +130,8 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 		}
 	}
 	if form.ControlType == string(storage.ControlTypeRadioButtons) {
+		// Radio-button controls get non-blank defaults so the form stays readable
+		// even when the user has not named every state yet.
 		applyDefaultRadioButtonLabels(form.StateLabels)
 	}
 
@@ -140,11 +150,14 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 	form.NumStates = control.NumStates
 	form.StateLabels = control.StateLabels
 	if form.StateLabels == nil {
+		// The view layer always receives a concrete slice so templates can index
+		// state labels without carrying nil checks through the markup.
 		form.StateLabels = make([]string, form.NumStates)
 	}
 	return control, form, ""
 }
 
+// newControlFormData projects stored control metadata into form defaults.
 func newControlFormData(control storage.Control) view.ControlFormData {
 	numStates := control.NumStates
 	if numStates < minControlStates || numStates > maxControlStates {
@@ -161,6 +174,8 @@ func newControlFormData(control storage.Control) view.ControlFormData {
 	form.StateLabels = make([]string, form.NumStates)
 	copy(form.StateLabels, control.StateLabels)
 	if form.ControlType == string(storage.ControlTypeSliders) && allLabelsBlank(form.StateLabels) {
+		// Persisted slider metadata may omit labels, but the edit form always
+		// rehydrates the fixed default label set expected by the UI.
 		form.NumStates = len(defaultSliderLabels)
 		form.StateLabels = append([]string(nil), defaultSliderLabels...)
 	}
@@ -170,6 +185,7 @@ func newControlFormData(control storage.Control) view.ControlFormData {
 	return form
 }
 
+// controlFormPageData packages one control form render with route and locking state.
 func controlFormPageData(form view.ControlFormData, existingControlID string, hasAggregates bool, errMsg string) view.ControlFormPageData {
 	data := view.ControlFormPageData{
 		Form:            form,
@@ -199,6 +215,7 @@ func controlFormPageData(form view.ControlFormData, existingControlID string, ha
 	return data
 }
 
+// parseModelForm reads and validates the model row form submission.
 func parseModelForm(r *http.Request) (storage.Model, view.ModelFormData, string) {
 	if err := r.ParseForm(); err != nil {
 		return storage.Model{}, view.ModelFormData{}, "invalid form submission"
@@ -219,6 +236,7 @@ func parseModelForm(r *http.Request) (storage.Model, view.ModelFormData, string)
 	}, form, ""
 }
 
+// renderControlFormPage writes the standalone control form page.
 func renderControlFormPage(w http.ResponseWriter, r *http.Request, data view.ControlFormPageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := view.ControlFormPage(data).Render(r.Context(), w); err != nil {
@@ -226,6 +244,7 @@ func renderControlFormPage(w http.ResponseWriter, r *http.Request, data view.Con
 	}
 }
 
+// loadExistingControl fetches the control targeted by the current route and whether it has aggregates.
 func loadExistingControl(r *http.Request, db *sql.DB) (storage.Control, bool, error) {
 	controlID := r.PathValue("controlID")
 	control, err := storage.GetControl(r.Context(), db, controlID)
@@ -239,6 +258,7 @@ func loadExistingControl(r *http.Request, db *sql.DB) (storage.Control, bool, er
 	return control, len(keys) > 0, nil
 }
 
+// rejectStructuralChange reports a user-facing error when a locked control shape changes.
 func rejectStructuralChange(existing storage.Control, next storage.Control) string {
 	if existing.NumStates != next.NumStates {
 		return "cannot change state count after aggregate data has been recorded"
@@ -249,6 +269,7 @@ func rejectStructuralChange(existing storage.Control, next storage.Control) stri
 	return ""
 }
 
+// mapControlSaveError translates storage save failures into form error text.
 func mapControlSaveError(err error) string {
 	switch {
 	case errors.Is(err, storage.ErrConflict):
@@ -260,6 +281,7 @@ func mapControlSaveError(err error) string {
 	}
 }
 
+// mapModelSaveError translates model save failures into form error text.
 func mapModelSaveError(err error) string {
 	switch {
 	case errors.Is(err, storage.ErrValidation):
@@ -273,6 +295,7 @@ func mapModelSaveError(err error) string {
 	}
 }
 
+// allLabelsBlank reports whether a label set contains any user-provided text.
 func allLabelsBlank(labels []string) bool {
 	for _, label := range labels {
 		if strings.TrimSpace(label) != "" {
@@ -282,6 +305,7 @@ func allLabelsBlank(labels []string) bool {
 	return true
 }
 
+// applyDefaultRadioButtonLabels fills the default radio-button labels required by the UI.
 func applyDefaultRadioButtonLabels(labels []string) {
 	if len(labels) == 0 {
 		return

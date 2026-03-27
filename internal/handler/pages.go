@@ -12,11 +12,39 @@ import (
 	"slices"
 	"strconv"
 
+	"home-automation-schedule-analytics-single-bin/internal/analytics"
 	"home-automation-schedule-analytics-single-bin/internal/domain"
 	"home-automation-schedule-analytics-single-bin/internal/snapshot"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 	"home-automation-schedule-analytics-single-bin/internal/view"
 )
+
+var stateChartPalette = []string{
+	"#4f7cff",
+	"#ff8a3d",
+	"#30b98f",
+	"#ef5b7a",
+	"#8c6dfd",
+	"#e3b341",
+	"#28a0c7",
+	"#c268d8",
+}
+
+type weeklyBarPayload struct {
+	Series      []float64 `json:"series"`
+	ValueFormat string    `json:"valueFormat"`
+}
+
+type weeklyStackedPayload struct {
+	Stacks      []weeklyStack `json:"stacks"`
+	ValueFormat string        `json:"valueFormat"`
+}
+
+type weeklyStack struct {
+	Label  string    `json:"label"`
+	Color  string    `json:"color"`
+	Values []float64 `json:"values"`
+}
 
 // HandleHomePage renders the control index page with lightweight aggregate counts.
 func HandleHomePage(db *sql.DB) http.HandlerFunc {
@@ -82,6 +110,7 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 	return handleControlPage(db, "")
 }
 
+// handleControlPage renders one control page and optionally surfaces a top-level form error.
 func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.PathValue("controlID")
@@ -214,6 +243,7 @@ func HandleUpdateModel(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// renderExistingControlPage renders the combined control configuration and analytics page.
 func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.DB, control storage.Control, hasAggregates bool, form view.ControlFormData, errMsg string, modelForm view.ModelFormData, modelErr string) {
 	keys, err := storage.ListAggregateKeys(r.Context(), db, control.ControlID)
 	if err != nil {
@@ -244,7 +274,9 @@ func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.D
 	}
 }
 
+// buildControlPageData assembles the selector state, analytics report, and model table for one control page.
 func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.ControlPageData, error) {
+	query := cloneQueryValues(r.URL.Query())
 	data := view.ControlPageData{
 		ControlID:     control.ControlID,
 		ControlType:   string(control.ControlType),
@@ -254,6 +286,14 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 		ModelForm:     defaultModelForm(control.ControlID),
 		HasAggregates: len(keys) > 0,
 	}
+	selectedMode := query.Get("mode")
+	if selectedMode == "" {
+		selectedMode = "report"
+	}
+	if selectedMode != "report" && selectedMode != "raw" {
+		selectedMode = "report"
+	}
+	data.AnalyticsMode = selectedMode
 	models, err := storage.ListModels(r.Context(), db, control.ControlID)
 	if err != nil {
 		return view.ControlPageData{}, err
@@ -263,14 +303,11 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 			ModelID: model.ModelID,
 			Action:  fmt.Sprintf("/controls/%s/models/%s", url.PathEscape(control.ControlID), url.PathEscape(model.ModelID)),
 		})
-		data.ModelOptions = append(data.ModelOptions, view.ModelOption{
-			ModelID:  model.ModelID,
-			Selected: false,
-			PageURL:  controlPageURL(url.PathEscape(control.ControlID), model.ModelID),
-		})
 	}
 
 	selectedModelID := ""
+	// Page selection prefers an explicit query parameter, then a model with data,
+	// then any known model so the page lands on the most useful analytics slice.
 	if requestedModelID := r.URL.Query().Get("model"); requestedModelID != "" {
 		for _, model := range data.Models {
 			if model.ModelID == requestedModelID {
@@ -298,11 +335,10 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 		selectedModelID = keys[0].ModelID
 	}
 	data.ModelID = selectedModelID
-	for i := range data.ModelOptions {
-		data.ModelOptions[i].Selected = data.ModelOptions[i].ModelID == selectedModelID
-	}
 
 	quarterSet := make(map[int]string)
+	// Quarter choices are scoped to the selected model because reports are built
+	// one `(control, model, quarter)` slice at a time.
 	for _, k := range keys {
 		if k.ModelID != selectedModelID {
 			continue
@@ -332,6 +368,11 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 	if selectedQuarter < 0 && latestQuarter >= 0 {
 		selectedQuarter = latestQuarter
 	}
+	if selectedQuarter >= 0 {
+		if _, ok := quarterSet[selectedQuarter]; !ok && latestQuarter >= 0 {
+			selectedQuarter = latestQuarter
+		}
+	}
 
 	quarters := make([]view.QuarterOption, 0, len(quarterIndexes))
 	for _, qi := range quarterIndexes {
@@ -339,22 +380,86 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 			QuarterIndex: qi,
 			Label:        quarterSet[qi],
 			Selected:     qi == selectedQuarter,
+			PageURL:      controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, qi, query.Get("clock"), selectedMode)),
 		})
 	}
 	data.Quarters = quarters
 
-	if selectedModelID != "" && selectedQuarter >= 0 {
-		data.BucketJSON = buildBucketJSON(r.Context(), db, control.ControlID, selectedModelID, selectedQuarter, control.NumStates)
+	selectedClock := query.Get("clock")
+	reportOpts, reportOptsErr := parseReportOptions(r)
+	if reportOptsErr != nil {
+		log.Printf("parse report options for control %s: %v", control.ControlID, reportOptsErr)
+		reportOpts = analytics.DefaultReportOptions()
 	}
+	if selectedModelID != "" && selectedQuarter >= 0 {
+		rawReport, err := analytics.BuildRawReport(r.Context(), db, control, selectedModelID, selectedQuarter)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return view.ControlPageData{}, err
+		}
+		if err == nil {
+			if selectedClock == "" && len(rawReport.Clocks) > 0 {
+				selectedClock = rawReport.Clocks[0].ClockSlug
+			}
+			if selectedClock != "" {
+				if _, err := rawReport.ClockBySlug(selectedClock); err != nil && len(rawReport.Clocks) > 0 {
+					selectedClock = rawReport.Clocks[0].ClockSlug
+				}
+			}
+			for _, clockReport := range rawReport.Clocks {
+				data.ClockOptions = append(data.ClockOptions, view.ClockOption{
+					ClockSlug: clockReport.ClockSlug,
+					Label:     clockReport.ClockLabel,
+					Selected:  clockReport.ClockSlug == selectedClock,
+					PageURL:   controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, selectedQuarter, clockReport.ClockSlug, selectedMode)),
+				})
+			}
+			selectedRaw, err := rawReport.ClockBySlug(selectedClock)
+			if err == nil {
+				data.RawAnalytics = buildRawAnalyticsViewData(rawReport, selectedRaw)
+			}
+			derived, err := analytics.BuildDerivedReportFromRaw(rawReport, reportOpts)
+			if err != nil {
+				return view.ControlPageData{}, err
+			}
+			selectedReport, err := derived.ClockBySlug(selectedClock)
+			if err == nil {
+				data.Analytics = buildAnalyticsViewData(derived, selectedReport)
+			}
+		}
+	}
+	for _, model := range models {
+		data.ModelOptions = append(data.ModelOptions, view.ModelOption{
+			ModelID:  model.ModelID,
+			Selected: model.ModelID == selectedModelID,
+			PageURL:  controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, model.ModelID, selectedQuarter, selectedClock, selectedMode)),
+		})
+	}
+	for _, mode := range []struct {
+		label string
+		value string
+	}{
+		{label: "Report", value: "report"},
+		{label: "Raw", value: "raw"},
+	} {
+		data.ModeOptions = append(data.ModeOptions, view.AnalyticsModeOption{
+			Label:    mode.label,
+			Mode:     mode.value,
+			Selected: selectedMode == mode.value,
+			PageURL:  controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, selectedQuarter, selectedClock, mode.value)),
+		})
+	}
+	data.ReportOptions = buildAnalyticsOptionsFormData(control.ControlID, selectedModelID, selectedQuarter, selectedClock, selectedMode, reportOpts, reportOptsErr)
 	return data, nil
 }
 
+// defaultModelForm returns the empty model form shown on a control page.
 func defaultModelForm(controlID string) view.ModelFormData {
 	return view.ModelFormData{
 		Action: fmt.Sprintf("/controls/%s/models/new", url.PathEscape(controlID)),
 	}
 }
 
+// applyModelRowError injects a model form error back into the matching control-page row.
 func applyModelRowError(data *view.ControlPageData, previousModelID string, form view.ModelFormData, errMsg string) {
 	for i := range data.Models {
 		if data.Models[i].ModelID != previousModelID {
@@ -366,12 +471,231 @@ func applyModelRowError(data *view.ControlPageData, previousModelID string, form
 	}
 }
 
+// controlPageURL builds a control-page URL while preserving the selected model when present.
 func controlPageURL(escapedControlID, modelID string) string {
 	pageURL := fmt.Sprintf("/controls/%s", escapedControlID)
 	if modelID == "" {
 		return pageURL
 	}
 	return fmt.Sprintf("%s?model=%s", pageURL, url.QueryEscape(modelID))
+}
+
+// controlAnalyticsPageURL builds the analytics-selector URL for one control page state.
+func controlAnalyticsPageURL(controlID string, values url.Values) string {
+	path := fmt.Sprintf("/controls/%s", url.PathEscape(controlID))
+	if len(values) == 0 {
+		return path
+	}
+	return path + "?" + values.Encode()
+}
+
+func analyticsPageURLQuery(base url.Values, modelID string, quarter int, clock, mode string) url.Values {
+	values := cloneQueryValues(base)
+	if modelID != "" {
+		values.Set("model", modelID)
+	} else {
+		values.Del("model")
+	}
+	if quarter >= 0 {
+		values.Set("quarter", strconv.Itoa(quarter))
+	} else {
+		values.Del("quarter")
+	}
+	if clock != "" {
+		values.Set("clock", clock)
+	} else {
+		values.Del("clock")
+	}
+	if mode != "" && mode != "report" {
+		values.Set("mode", mode)
+	} else {
+		values.Del("mode")
+	}
+	return values
+}
+
+func cloneQueryValues(values url.Values) url.Values {
+	cloned := url.Values{}
+	for key, all := range values {
+		cloned[key] = append([]string(nil), all...)
+	}
+	return cloned
+}
+
+func buildAnalyticsOptionsFormData(controlID, modelID string, quarter int, clock, mode string, opts analytics.ReportOptions, parseErr error) view.AnalyticsOptionsFormData {
+	data := view.AnalyticsOptionsFormData{
+		Action:                 fmt.Sprintf("/controls/%s", url.PathEscape(controlID)),
+		ModelID:                modelID,
+		Mode:                   mode,
+		Smoothing:              opts.SmoothingKind,
+		HoldingDampingMillis:   formatFloatParam(opts.HoldingDampingMillis),
+		TransitionDampingCount: formatFloatParam(opts.TransitionDampingCount),
+		IncludeRaw:             opts.Include.Raw,
+		IncludeSmoothed:        opts.Include.Smoothed,
+		IncludeRates:           opts.Include.Rates,
+	}
+	if quarter >= 0 {
+		data.Quarter = strconv.Itoa(quarter)
+	}
+	if clock != "" {
+		data.Clock = clock
+	}
+	if opts.SmoothingKind == analytics.SmoothingGaussian {
+		data.KernelRadius = strconv.Itoa(opts.KernelRadius)
+		data.KernelSigma = formatFloatParam(opts.KernelSigma)
+	}
+	if parseErr != nil {
+		data.Error = parseErr.Error()
+	}
+	return data
+}
+
+func formatFloatParam(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+// buildAnalyticsViewData projects analytics report data into the view model consumed by the template.
+func buildAnalyticsViewData(report analytics.DerivedReport, selected analytics.DerivedClockReport) view.AnalyticsViewData {
+	data := view.AnalyticsViewData{
+		HasData:      true,
+		ModelID:      report.ModelID,
+		QuarterLabel: report.QuarterLabel,
+		ClockLabel:   selected.ClockLabel,
+	}
+	if selected.Diagnostics != nil {
+		data.Diagnostics = view.AnalyticsDiagnostics{
+			TotalHolding:    formatDurationMillis(selected.Diagnostics.TotalHoldingMillis),
+			TransitionCount: fmt.Sprintf("%.0f", selected.Diagnostics.TransitionCount),
+			FallbackBuckets: selected.Diagnostics.FallbackBuckets,
+		}
+	}
+	legendItems := make([]view.ChartLegendItem, 0, len(selected.OccupancySeries))
+	for idx := range selected.OccupancySeries {
+		occupancySeries := selected.OccupancySeries[idx]
+		preferenceSeries := selected.PreferenceSeries[idx]
+		data.States = append(data.States, view.AnalyticsStateData{
+			OccupancyMean:  formatShare(occupancySeries.Mean),
+			PreferenceMean: formatShare(preferenceSeries.Mean),
+			Label:          occupancySeries.Label,
+		})
+		legendItems = append(legendItems, view.ChartLegendItem{
+			Label: occupancySeries.Label,
+			Color: chartColor(idx),
+		})
+	}
+	data.ChartLegendItems = legendItems
+	data.OccupancyChart = buildWeeklyStackedChartData(selected.OccupancySeries, "share", "Actual occupancy by bucket")
+	data.PreferenceChart = buildWeeklyStackedChartData(selected.PreferenceSeries, "share", "Inferred preference by bucket")
+	return data
+}
+
+func buildRawAnalyticsViewData(report analytics.RawReport, selected analytics.RawClockReport) view.RawAnalyticsViewData {
+	data := view.RawAnalyticsViewData{
+		HasData:      true,
+		ModelID:      report.ModelID,
+		QuarterLabel: report.QuarterLabel,
+		ClockLabel:   selected.ClockLabel,
+	}
+	var totalHolding uint64
+	var totalTransitions uint64
+	totalHoldingBuckets := make([]uint64, domain.BucketsPerWeek)
+	totalTransitionBuckets := make([]uint64, domain.BucketsPerWeek)
+	for _, holding := range selected.HoldingMillis {
+		stateTotal := sumUint64Series(holding.Buckets)
+		totalHolding += stateTotal
+		addUint64Series(totalHoldingBuckets, holding.Buckets)
+		data.HoldingStates = append(data.HoldingStates, view.RawAnalyticsStateData{
+			Label:        holding.Label,
+			TotalHolding: formatDurationMillis(float64(stateTotal)),
+			HoldingChart: buildWeeklyBarChartDataFromUint(holding.Buckets, "durationMillis", holding.Label),
+		})
+	}
+	for _, transition := range selected.TransitionCounts {
+		transitionTotal := sumUint64Series(transition.Buckets)
+		totalTransitions += transitionTotal
+		addUint64Series(totalTransitionBuckets, transition.Buckets)
+		data.TransitionSeries = append(data.TransitionSeries, view.RawAnalyticsTransitionData{
+			Label:           fmt.Sprintf("%s → %s", transition.FromLabel, transition.ToLabel),
+			TransitionTotal: fmt.Sprintf("%d", transitionTotal),
+			TransitionChart: buildWeeklyBarChartDataFromUint(transition.Buckets, "count", fmt.Sprintf("%s → %s", transition.FromLabel, transition.ToLabel)),
+		})
+	}
+	data.TotalHolding = formatDurationMillis(float64(totalHolding))
+	data.TransitionCount = fmt.Sprintf("%d", totalTransitions)
+	data.TotalHoldingChart = buildWeeklyBarChartDataFromUint(totalHoldingBuckets, "durationMillis", "Total holding time")
+	data.TotalTransitionChart = buildWeeklyBarChartDataFromUint(totalTransitionBuckets, "count", "Total transitions")
+	return data
+}
+
+func sumUint64Series(values []uint64) uint64 {
+	var total uint64
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func addUint64Series(dst, src []uint64) {
+	for i := range min(len(dst), len(src)) {
+		dst[i] += src[i]
+	}
+}
+
+func buildWeeklyBarChartDataFromUint(values []uint64, valueFormat, summary string) view.ChartData {
+	series := make([]float64, len(values))
+	for i, value := range values {
+		series[i] = float64(value)
+	}
+	return buildWeeklyBarChartData(series, valueFormat, summary)
+}
+
+func buildWeeklyBarChartData(values []float64, valueFormat, summary string) view.ChartData {
+	return view.ChartData{
+		Kind:    "bars",
+		Payload: marshalChartPayload(weeklyBarPayload{Series: values, ValueFormat: valueFormat}),
+		Summary: summary,
+	}
+}
+
+func buildWeeklyStackedChartData(series []analytics.Series, valueFormat, summary string) view.ChartData {
+	stacks := make([]weeklyStack, 0, len(series))
+	for idx, stateSeries := range series {
+		stacks = append(stacks, weeklyStack{
+			Label:  stateSeries.Label,
+			Color:  chartColor(idx),
+			Values: append([]float64(nil), stateSeries.Buckets...),
+		})
+	}
+	return view.ChartData{
+		Kind:    "stacked",
+		Payload: marshalChartPayload(weeklyStackedPayload{Stacks: stacks, ValueFormat: valueFormat}),
+		Summary: summary,
+	}
+}
+
+func marshalChartPayload(value any) string {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(jsonBytes)
+}
+
+func chartColor(index int) string {
+	return stateChartPalette[index%len(stateChartPalette)]
+}
+
+// formatShare renders a normalized share as a percentage string.
+func formatShare(value float64) string {
+	return fmt.Sprintf("%.1f%%", value*100)
+}
+
+// formatDurationMillis renders milliseconds as an hours string for diagnostics.
+func formatDurationMillis(value float64) string {
+	totalSeconds := int64(value / 1000)
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	return fmt.Sprintf("%dh %dm", hours, minutes)
 }
 
 // HandleSnapshotPage renders the snapshot listing page.
@@ -399,7 +723,7 @@ func HandleSnapshotPage(snapshotDir string) http.HandlerFunc {
 	}
 }
 
-// HandleHeatmapPartial renders the heatmap fragment for one control and quarter selection.
+// HandleHeatmapPartial renders a compact chart fragment for one control and quarter selection.
 func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.URL.Query().Get("controlId")
@@ -437,40 +761,37 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 			modelID = keys[0].ModelID
 		}
 
-		bucketJSON := buildBucketJSON(r.Context(), db, controlID, modelID, quarterIndex, control.NumStates)
-		if bucketJSON == "" {
+		chart := buildAggregateHoldingChart(r.Context(), db, controlID, modelID, quarterIndex, control.NumStates)
+		if chart.Payload == "" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte(`<p class="empty">No data for this quarter.</p>`))
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := view.HeatmapCanvas(bucketJSON).Render(r.Context(), w); err != nil {
-			log.Printf("render heatmap partial: %v", err)
+		if err := view.ChartCanvas(chart).Render(r.Context(), w); err != nil {
+			log.Printf("render analytics partial: %v", err)
 		}
 	}
 }
 
-// buildBucketJSON reduces one aggregate into the UTC holding series used by the heatmap.
-func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string, quarterIndex, numStates int) string {
+// buildAggregateHoldingChart reduces one aggregate into a single UTC holding chart.
+func buildAggregateHoldingChart(ctx context.Context, db *sql.DB, controlID, modelID string, quarterIndex, numStates int) view.ChartData {
 	if modelID == "" {
-		return ""
+		return view.ChartData{}
 	}
 	key := storage.AggregateKey{ControlID: controlID, ModelID: modelID, QuarterIndex: quarterIndex}
 	data, err := storage.GetAggregate(ctx, db, key, numStates)
 	if err != nil {
-		return ""
+		return view.ChartData{}
 	}
 
 	b, err := domain.NewBlob(numStates)
 	if err != nil {
-		return ""
+		return view.ChartData{}
 	}
 	copy(b.Data(), data)
 
-	// The heatmap is intentionally a single normalized view: UTC holding time
-	// summed across states. The aggregate still retains all other clocks and
-	// transition counters for future visualizations.
 	buckets := make([]uint64, domain.BucketsPerWeek)
 	for state := 0; state < numStates; state++ {
 		for bkt := 0; bkt < domain.BucketsPerWeek; bkt++ {
@@ -485,12 +806,7 @@ func buildBucketJSON(ctx context.Context, db *sql.DB, controlID, modelID string,
 			buckets[bkt] += v
 		}
 	}
-
-	jsonBytes, err := json.Marshal(buckets)
-	if err != nil {
-		return ""
-	}
-	return string(jsonBytes)
+	return buildWeeklyBarChartDataFromUint(buckets, "durationMillis", "Total UTC holding time")
 }
 
 // quarterLabel formats the internal quarter index for display.

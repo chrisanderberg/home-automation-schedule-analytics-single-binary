@@ -9,6 +9,7 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/ingest"
 )
 
+// Config bundles the dependencies needed to construct the HTTP server.
 type Config struct {
 	DB          *sql.DB
 	IngestCfg   ingest.Config
@@ -22,6 +23,9 @@ func New(cfg Config) http.Handler {
 
 	// JSON API
 	mux.HandleFunc("GET /api/v1/health", handler.HandleHealth())
+	mux.HandleFunc("GET /api/v1/analytics", handler.HandleAnalytics(cfg.DB))
+	mux.HandleFunc("GET /api/v1/analytics/raw", handler.HandleAnalyticsRaw(cfg.DB))
+	mux.HandleFunc("GET /api/v1/analytics/report", handler.HandleAnalyticsReport(cfg.DB))
 	mux.HandleFunc("POST /api/v1/controls", handler.HandleControls(cfg.DB))
 	mux.HandleFunc("POST /api/v1/holding-intervals", handler.HandleHolding(cfg.DB, cfg.IngestCfg))
 	mux.HandleFunc("POST /api/v1/transitions", handler.HandleTransitions(cfg.DB, cfg.IngestCfg))

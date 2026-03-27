@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// QuarterSpan describes how much of an interval belongs to one UTC quarter.
 type QuarterSpan struct {
 	QuarterIndex int
 	StartMs      int64
@@ -23,6 +24,8 @@ func SplitQuarterIntervalUTC(startMs, endMs int64) ([]QuarterSpan, error) {
 		if boundaryMs > endMs {
 			boundaryMs = endMs
 		}
+		// Quarter splitting preserves the UTC quarter that owns each sub-interval
+		// so ingestion can update each seasonal aggregate independently.
 		spans = append(spans, QuarterSpan{
 			QuarterIndex: quarterIndex,
 			StartMs:      cur,
@@ -43,6 +46,8 @@ func QuarterIndexUTC(timestampMs int64) int {
 func quarterIndexUTC(t time.Time) int {
 	month := int(t.Month())
 	quarterNumber := ((month - 1) / 3) + 1
+	// Quarter indexes are stored as a monotonic integer so aggregate keys remain
+	// compact and sortable without carrying a `(year, quarter)` tuple everywhere.
 	return (t.Year()-1970)*4 + (quarterNumber - 1)
 }
 

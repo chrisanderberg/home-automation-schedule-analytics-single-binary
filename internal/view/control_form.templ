@@ -2,6 +2,7 @@ package view
 
 import "fmt"
 
+// ControlFormData carries the editable values for one control form render.
 type ControlFormData struct {
 	ControlID   string
 	ControlType string
@@ -9,35 +10,49 @@ type ControlFormData struct {
 	StateLabels []string
 }
 
+// ControlFormPageData packages one control form render with route and locking state.
 type ControlFormPageData struct {
-	Title            string
-	Heading          string
-	Action           string
-	SubmitLabel      string
-	CancelURL        string
-	ExistingControl  string
-	LockedStructure  bool
-	StructureHint    string
-	Errors           []string
-	Form             ControlFormData
+	Title           string
+	Heading         string
+	Action          string
+	SubmitLabel     string
+	CancelURL       string
+	ExistingControl string
+	LockedStructure bool
+	StructureHint   string
+	Errors          []string
+	Form            ControlFormData
 }
 
+// controlTypeSelected reports whether one control-type option should be selected.
 func controlTypeSelected(current, value string) bool {
 	return current == value
 }
 
+// controlTypeIsSlider reports whether the current control type uses the slider UI.
 func controlTypeIsSlider(current string) bool {
 	return current == "sliders"
 }
 
+// controlFormNumStates returns the effective state count rendered by the form.
+func controlFormNumStates(form ControlFormData) int {
+	if controlTypeIsSlider(form.ControlType) {
+		return 6
+	}
+	return form.NumStates
+}
+
+// controlStateIndexes returns the fixed list of state field indexes rendered by the form.
 func controlStateIndexes() []int {
 	return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 }
 
+// controlStateEnabled reports whether a state-label field should be editable.
 func controlStateEnabled(numStates, idx int) bool {
 	return idx < numStates
 }
 
+// controlStateLabel returns the label value to show for one state field.
 func controlStateLabel(labels []string, idx int) string {
 	if idx < len(labels) {
 		return labels[idx]
@@ -58,6 +73,7 @@ templ ControlFormPage(data ControlFormPageData) {
 	}
 }
 
+// ControlForm renders the editable control metadata form.
 templ ControlForm(data ControlFormPageData) {
 	if len(data.Errors) > 0 {
 		<div class="form-errors">
@@ -87,10 +103,13 @@ templ ControlForm(data ControlFormPageData) {
 			<label class="form-field">
 				<span>Possible states</span>
 				if data.LockedStructure {
-					<input type="hidden" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) }/>
-					<input type="text" value={ fmt.Sprintf("%d", data.Form.NumStates) } readonly/>
+					<input type="hidden" name="numStates" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) }/>
+					<input type="text" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) } readonly/>
+				} else if controlTypeIsSlider(data.Form.ControlType) {
+					<input type="hidden" name="numStates" value="6"/>
+					<input type="text" value="6" readonly/>
 				} else {
-					<input type="number" min="2" max="10" name="numStates" value={ fmt.Sprintf("%d", data.Form.NumStates) } required/>
+					<input type="number" min="2" max="10" name="numStates" value={ fmt.Sprintf("%d", controlFormNumStates(data.Form)) } required/>
 				}
 			</label>
 		</div>
@@ -98,15 +117,15 @@ templ ControlForm(data ControlFormPageData) {
 		if data.StructureHint != "" {
 			<p class="form-hint">{ data.StructureHint }</p>
 		}
-			<div class="state-grid">
-				for _, idx := range controlStateIndexes() {
-					<label class={ stateFieldClass(controlStateEnabled(data.Form.NumStates, idx)) }>
+		<div class="state-grid">
+			for _, idx := range controlStateIndexes() {
+				<label class={ stateFieldClass(controlStateEnabled(controlFormNumStates(data.Form), idx)) }>
 					<span>{ fmt.Sprintf("State %d label", idx+1) }</span>
-						<input
-							type="text"
-							name="stateLabel"
-							value={ controlStateLabel(data.Form.StateLabels, idx) }
-						disabled?={ !controlStateEnabled(data.Form.NumStates, idx) }
+					<input
+						type="text"
+						name="stateLabel"
+						value={ controlStateLabel(data.Form.StateLabels, idx) }
+						disabled?={ !controlStateEnabled(controlFormNumStates(data.Form), idx) }
 					/>
 				</label>
 			}
@@ -118,6 +137,7 @@ templ ControlForm(data ControlFormPageData) {
 	</form>
 }
 
+// stateFieldClass returns the CSS class for enabled versus locked state fields.
 func stateFieldClass(enabled bool) string {
 	if enabled {
 		return "form-field state-field"

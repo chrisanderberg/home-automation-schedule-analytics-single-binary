@@ -32,6 +32,7 @@ var (
 	ErrSelfTransition   = errors.New("self transition is not allowed")
 )
 
+// Blob stores packed holding and transition counters for one control state layout.
 type Blob struct {
 	numStates int
 	data      []byte
@@ -107,6 +108,8 @@ func TransGroupIndex(fromState, toState, numStates int) (int, error) {
 	if fromState == toState {
 		return 0, ErrSelfTransition
 	}
+	// Transition groups are packed as "all destinations except self" for each
+	// source state, so later destinations shift left by one slot.
 	offset := toState
 	if toState > fromState {
 		offset = toState - 1

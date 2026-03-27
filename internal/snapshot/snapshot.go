@@ -107,12 +107,15 @@ func copySQLiteDB(ctx context.Context, src *sql.DB, destPath string) error {
 			return fmt.Errorf("copy table %s: %w", table, err)
 		}
 	}
+	// Non-table schema objects are replayed after data copy so the snapshot keeps
+	// the same logical schema without paying index or trigger maintenance mid-copy.
 	if err := execDDLs(ctx, dest, otherDDLs); err != nil {
 		return err
 	}
 	return nil
 }
 
+// schemaDDL carries one schema object's SQL and type when cloning SQLite metadata.
 type schemaDDL struct {
 	objectType string
 	sql        string
@@ -155,6 +158,7 @@ func execDDLs(ctx context.Context, db *sql.DB, ddls []string) error {
 	return nil
 }
 
+// queryContexter captures the query methods shared by database and transaction handles.
 type queryContexter interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
@@ -301,10 +305,13 @@ func copyTable(ctx context.Context, src queryContexter, dest *sql.DB, table stri
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	// Clearing tx after the final commit prevents the deferred rollback from
+	// treating a successful copy as an uncommitted batch.
 	tx = nil
 	return nil
 }
 
+// SnapshotInfo describes one exported snapshot file shown in the UI.
 type SnapshotInfo struct {
 	Path    string
 	Name    string

@@ -147,6 +147,8 @@ func SplitIntervalUnequalHours(startMs, endMs int64, latitude, longitude float64
 		if millis <= 0 {
 			return nil, ErrInvalidInterval
 		}
+		// The unequal-hours clock can change at non-uniform real-time distances,
+		// so spans are cut at the next bucket boundary rather than fixed durations.
 		spans = append(spans, BucketSpan{Bucket: bucket, Millis: millis})
 		cur = boundary
 	}
@@ -171,6 +173,8 @@ func unequalHoursBoundary(t time.Time, latitude, longitude float64) (time.Time, 
 		if b != bucket {
 			low := lastSameBucket
 			high := nextBucketStart
+			// The binary search homes in on the first instant outside the current
+			// bucket so later splitting logic can preserve exact boundary placement.
 			for high.Sub(low) > time.Millisecond {
 				mid := low.Add(high.Sub(low) / 2)
 				midBucket, err := BucketAtUnequalHours(mid.UnixMilli(), latitude, longitude)
@@ -262,6 +266,8 @@ func sunriseSunsetSolarMinutes(day time.Time, latitude float64) (float64, float6
 	latRad := latitude * math.Pi / 180
 	solarZenith := 90.833 * math.Pi / 180
 
+	// Values outside [-1, 1] indicate polar-day or polar-night conditions where
+	// the unequal-hours clock is undefined for that date and latitude.
 	cosH := (math.Cos(solarZenith)/(math.Cos(latRad)*math.Cos(decl)) - math.Tan(latRad)*math.Tan(decl))
 	if cosH > 1 || cosH < -1 {
 		return 0, 0, ErrUndefinedClock

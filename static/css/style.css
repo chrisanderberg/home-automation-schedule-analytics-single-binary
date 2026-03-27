@@ -192,6 +192,20 @@ h1 {
   font: inherit;
 }
 
+.analytics-check input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.analytics-options-form {
+  margin-bottom: 1rem;
+}
+
+.analytics-checkbox-grid {
+  margin-top: 0.5rem;
+}
+
 .form-field input[readonly] {
   color: var(--text-muted);
 }
@@ -293,7 +307,7 @@ h1 {
   border-color: var(--accent);
 }
 
-.heatmap-wrapper {
+.chart-wrapper {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -301,7 +315,82 @@ h1 {
   overflow-x: auto;
 }
 
-.heatmap { display: block; }
+.weekly-chart {
+  display: block;
+  max-width: none;
+}
+
+.report-header {
+  margin: 1.5rem 0 1rem;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.diagnostics-grid h4 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.summary-table-wrapper {
+  margin-bottom: 1rem;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.analytics-grid-primary {
+  grid-template-columns: 1fr;
+}
+
+.analytics-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.analytics-card-wide {
+  padding-bottom: 1.25rem;
+}
+
+.chart-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.legend-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  display: inline-block;
+}
 
 .snapshot-actions { margin-bottom: 1.5rem; }
 
