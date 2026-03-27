@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -50,8 +51,38 @@ func HandleHomePage(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// HandleNewControlPage renders the create-control form.
+func HandleNewControlPage() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderControlFormPage(w, r, controlFormPageData(newControlFormData(storage.Control{}), "", false, ""))
+	}
+}
+
+// HandleCreateControl saves a newly configured control from the UI.
+func HandleCreateControl(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		control, form, errMsg := parseControlForm(r)
+		if errMsg != "" {
+			renderControlFormPage(w, r, controlFormPageData(form, "", false, errMsg))
+			return
+		}
+
+		if err := storage.SaveControl(r.Context(), db, "", control); err != nil {
+			log.Printf("create control %s: %v", control.ControlID, err)
+			renderControlFormPage(w, r, controlFormPageData(form, "", false, mapControlSaveError(err)))
+			return
+		}
+
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), ""), http.StatusSeeOther)
+	}
+}
+
 // HandleControlPage renders one control detail page and its quarter selector.
 func HandleControlPage(db *sql.DB) http.HandlerFunc {
+	return handleControlPage(db, "")
+}
+
+func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.PathValue("controlID")
 		if controlID == "" {
@@ -77,71 +108,270 @@ func HandleControlPage(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		data := view.ControlPageData{
-			ControlID:   control.ControlID,
-			ControlType: string(control.ControlType),
-			NumStates:   control.NumStates,
-			StateLabels: control.StateLabels,
+		data, err := buildControlPageData(r, db, control, keys)
+		if err != nil {
+			log.Printf("build control page data for %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
-
-		// Aggregate keys drive the available quarter buttons and also determine the
-		// single model currently surfaced by the UI.
-		quarterSet := make(map[int]string)
-		var modelID string
-		for _, k := range keys {
-			if modelID == "" {
-				// The current UI visualizes one model at a time and defaults to the
-				// first available aggregate rather than introducing model selection.
-				modelID = k.ModelID
-			}
-			if _, ok := quarterSet[k.QuarterIndex]; !ok {
-				quarterSet[k.QuarterIndex] = quarterLabel(k.QuarterIndex)
-			}
-		}
-		data.ModelID = modelID
-
-		selectedQuarter := -1
-		if qStr := r.URL.Query().Get("quarter"); qStr != "" {
-			if q, err := strconv.Atoi(qStr); err == nil {
-				selectedQuarter = q
-			}
-		}
-
-		// Quarter options are always presented in ascending order, while the
-		// default selection prefers the newest quarter when none is requested.
-		quarterIndexes := make([]int, 0, len(quarterSet))
-		latestQuarter := -1
-		for qi := range quarterSet {
-			if qi > latestQuarter {
-				latestQuarter = qi
-			}
-			quarterIndexes = append(quarterIndexes, qi)
-		}
-		slices.Sort(quarterIndexes)
-
-		if selectedQuarter < 0 && latestQuarter >= 0 {
-			selectedQuarter = latestQuarter
-		}
-
-		quarters := make([]view.QuarterOption, 0, len(quarterIndexes))
-		for _, qi := range quarterIndexes {
-			quarters = append(quarters, view.QuarterOption{
-				QuarterIndex: qi,
-				Label:        quarterSet[qi],
-				Selected:     qi == selectedQuarter,
-			})
-		}
-		data.Quarters = quarters
-
-		if modelID != "" && selectedQuarter >= 0 {
-			data.BucketJSON = buildBucketJSON(r.Context(), db, controlID, modelID, selectedQuarter, control.NumStates)
-		}
+		data.FormData = controlFormPageData(newControlFormData(control), control.ControlID, len(keys) > 0, errMsg)
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := view.ControlPage(data).Render(r.Context(), w); err != nil {
 			log.Printf("render control: %v", err)
 		}
 	}
+}
+
+// HandleUpdateControl saves edits for an existing control from the UI.
+func HandleUpdateControl(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		existing, hasAggregates, err := loadExistingControl(r, db)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("load control for update: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		control, form, errMsg := parseControlForm(r)
+		if errMsg != "" {
+			renderExistingControlPage(w, r, db, existing, hasAggregates, form, errMsg, view.ModelFormData{}, "")
+			return
+		}
+		if hasAggregates {
+			if lockErr := rejectStructuralChange(existing, control); lockErr != "" {
+				renderExistingControlPage(w, r, db, existing, true, form, lockErr, view.ModelFormData{}, "")
+				return
+			}
+		}
+
+		if err := storage.SaveControl(r.Context(), db, existing.ControlID, control); err != nil {
+			log.Printf("update control %s: %v", existing.ControlID, err)
+			renderExistingControlPage(w, r, db, existing, hasAggregates, form, mapControlSaveError(err), view.ModelFormData{}, "")
+			return
+		}
+
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), ""), http.StatusSeeOther)
+	}
+}
+
+// HandleCreateModel saves a new model for an existing control from the UI.
+func HandleCreateModel(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		control, hasAggregates, err := loadExistingControl(r, db)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("load control for model create: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		model, form, errMsg := parseModelForm(r)
+		if errMsg != "" {
+			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, errMsg)
+			return
+		}
+		if err := storage.SaveModel(r.Context(), db, control.ControlID, "", model); err != nil {
+			log.Printf("create model %s/%s: %v", control.ControlID, model.ModelID, err)
+			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, mapModelSaveError(err))
+			return
+		}
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), model.ModelID), http.StatusSeeOther)
+	}
+}
+
+// HandleUpdateModel saves edits for an existing model from the UI.
+func HandleUpdateModel(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		control, hasAggregates, err := loadExistingControl(r, db)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("load control for model update: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		previousModelID := r.PathValue("modelID")
+		model, form, errMsg := parseModelForm(r)
+		if errMsg != "" {
+			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, errMsg)
+			return
+		}
+		if err := storage.SaveModel(r.Context(), db, control.ControlID, previousModelID, model); err != nil {
+			log.Printf("update model %s/%s: %v", control.ControlID, previousModelID, err)
+			renderExistingControlPage(w, r, db, control, hasAggregates, newControlFormData(control), "", form, mapModelSaveError(err))
+			return
+		}
+		http.Redirect(w, r, controlPageURL(url.PathEscape(control.ControlID), model.ModelID), http.StatusSeeOther)
+	}
+}
+
+func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.DB, control storage.Control, hasAggregates bool, form view.ControlFormData, errMsg string, modelForm view.ModelFormData, modelErr string) {
+	keys, err := storage.ListAggregateKeys(r.Context(), db, control.ControlID)
+	if err != nil {
+		log.Printf("list aggregate keys for %s: %v", control.ControlID, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	data, err := buildControlPageData(r, db, control, keys)
+	if err != nil {
+		log.Printf("build control page data for %s: %v", control.ControlID, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.FormData = controlFormPageData(form, control.ControlID, hasAggregates, errMsg)
+	data.ModelForm = defaultModelForm(control.ControlID)
+	if r.PathValue("modelID") != "" && (modelForm.ModelID != "" || modelErr != "") {
+		applyModelRowError(&data, r.PathValue("modelID"), modelForm, modelErr)
+	} else if modelForm.ModelID != "" || modelErr != "" {
+		data.ModelForm = modelForm
+		data.ModelForm.Action = fmt.Sprintf("/controls/%s/models/new", url.PathEscape(control.ControlID))
+		data.ModelForm.Error = modelErr
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := view.ControlPage(data).Render(r.Context(), w); err != nil {
+		log.Printf("render control: %v", err)
+	}
+}
+
+func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.ControlPageData, error) {
+	data := view.ControlPageData{
+		ControlID:     control.ControlID,
+		ControlType:   string(control.ControlType),
+		NumStates:     control.NumStates,
+		StateLabels:   control.StateLabels,
+		FormData:      controlFormPageData(newControlFormData(control), control.ControlID, len(keys) > 0, ""),
+		ModelForm:     defaultModelForm(control.ControlID),
+		HasAggregates: len(keys) > 0,
+	}
+	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	if err != nil {
+		return view.ControlPageData{}, err
+	}
+	for _, model := range models {
+		data.Models = append(data.Models, view.ModelRowData{
+			ModelID: model.ModelID,
+			Action:  fmt.Sprintf("/controls/%s/models/%s", url.PathEscape(control.ControlID), url.PathEscape(model.ModelID)),
+		})
+		data.ModelOptions = append(data.ModelOptions, view.ModelOption{
+			ModelID:  model.ModelID,
+			Selected: false,
+			PageURL:  controlPageURL(url.PathEscape(control.ControlID), model.ModelID),
+		})
+	}
+
+	selectedModelID := ""
+	if requestedModelID := r.URL.Query().Get("model"); requestedModelID != "" {
+		for _, model := range data.Models {
+			if model.ModelID == requestedModelID {
+				selectedModelID = requestedModelID
+				break
+			}
+		}
+	}
+	if selectedModelID == "" && len(data.Models) > 0 {
+		keyedModels := make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			keyedModels[key.ModelID] = struct{}{}
+		}
+		for _, model := range data.Models {
+			if _, ok := keyedModels[model.ModelID]; ok {
+				selectedModelID = model.ModelID
+				break
+			}
+		}
+	}
+	if selectedModelID == "" && len(data.Models) > 0 {
+		selectedModelID = data.Models[0].ModelID
+	}
+	if selectedModelID == "" && len(keys) > 0 {
+		selectedModelID = keys[0].ModelID
+	}
+	data.ModelID = selectedModelID
+	for i := range data.ModelOptions {
+		data.ModelOptions[i].Selected = data.ModelOptions[i].ModelID == selectedModelID
+	}
+
+	quarterSet := make(map[int]string)
+	for _, k := range keys {
+		if k.ModelID != selectedModelID {
+			continue
+		}
+		if _, ok := quarterSet[k.QuarterIndex]; !ok {
+			quarterSet[k.QuarterIndex] = quarterLabel(k.QuarterIndex)
+		}
+	}
+
+	selectedQuarter := -1
+	if qStr := r.URL.Query().Get("quarter"); qStr != "" {
+		if q, err := strconv.Atoi(qStr); err == nil {
+			selectedQuarter = q
+		}
+	}
+
+	quarterIndexes := make([]int, 0, len(quarterSet))
+	latestQuarter := -1
+	for qi := range quarterSet {
+		if qi > latestQuarter {
+			latestQuarter = qi
+		}
+		quarterIndexes = append(quarterIndexes, qi)
+	}
+	slices.Sort(quarterIndexes)
+
+	if selectedQuarter < 0 && latestQuarter >= 0 {
+		selectedQuarter = latestQuarter
+	}
+
+	quarters := make([]view.QuarterOption, 0, len(quarterIndexes))
+	for _, qi := range quarterIndexes {
+		quarters = append(quarters, view.QuarterOption{
+			QuarterIndex: qi,
+			Label:        quarterSet[qi],
+			Selected:     qi == selectedQuarter,
+		})
+	}
+	data.Quarters = quarters
+
+	if selectedModelID != "" && selectedQuarter >= 0 {
+		data.BucketJSON = buildBucketJSON(r.Context(), db, control.ControlID, selectedModelID, selectedQuarter, control.NumStates)
+	}
+	return data, nil
+}
+
+func defaultModelForm(controlID string) view.ModelFormData {
+	return view.ModelFormData{
+		Action: fmt.Sprintf("/controls/%s/models/new", url.PathEscape(controlID)),
+	}
+}
+
+func applyModelRowError(data *view.ControlPageData, previousModelID string, form view.ModelFormData, errMsg string) {
+	for i := range data.Models {
+		if data.Models[i].ModelID != previousModelID {
+			continue
+		}
+		data.Models[i].DraftModelID = form.ModelID
+		data.Models[i].Error = errMsg
+		return
+	}
+}
+
+func controlPageURL(escapedControlID, modelID string) string {
+	pageURL := fmt.Sprintf("/controls/%s", escapedControlID)
+	if modelID == "" {
+		return pageURL
+	}
+	return fmt.Sprintf("%s?model=%s", pageURL, url.QueryEscape(modelID))
 }
 
 // HandleSnapshotPage renders the snapshot listing page.
@@ -173,6 +403,7 @@ func HandleSnapshotPage(snapshotDir string) http.HandlerFunc {
 func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.URL.Query().Get("controlId")
+		modelID := r.URL.Query().Get("modelId")
 		quarterStr := r.URL.Query().Get("quarter")
 		if controlID == "" || quarterStr == "" {
 			http.Error(w, "missing params", http.StatusBadRequest)
@@ -202,11 +433,8 @@ func HandleHeatmapPartial(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		var modelID string
-		for _, k := range keys {
-			// The partial follows the same single-model assumption as the full page.
-			modelID = k.ModelID
-			break
+		if modelID == "" && len(keys) > 0 {
+			modelID = keys[0].ModelID
 		}
 
 		bucketJSON := buildBucketJSON(r.Context(), db, controlID, modelID, quarterIndex, control.NumStates)

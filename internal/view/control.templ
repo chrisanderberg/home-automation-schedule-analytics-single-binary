@@ -10,13 +10,37 @@ type QuarterOption struct {
 }
 
 type ControlPageData struct {
-	ControlID   string
-	ControlType string
-	NumStates   int
-	StateLabels []string
-	ModelID     string
-	Quarters    []QuarterOption
-	BucketJSON  string
+	ControlID    string
+	ControlType  string
+	NumStates    int
+	StateLabels  []string
+	ModelID      string
+	ModelOptions []ModelOption
+	Models       []ModelRowData
+	ModelForm    ModelFormData
+	Quarters     []QuarterOption
+	BucketJSON   string
+	FormData     ControlFormPageData
+	HasAggregates bool
+}
+
+type ModelOption struct {
+	ModelID   string
+	Selected  bool
+	PageURL   string
+}
+
+type ModelRowData struct {
+	ModelID      string
+	Action       string
+	DraftModelID string
+	Error        string
+}
+
+type ModelFormData struct {
+	Action  string
+	ModelID string
+	Error   string
 }
 
 // quarterButtonClass returns the CSS class for a quarter selector button.
@@ -31,28 +55,75 @@ func quarterButtonClass(selected bool) string {
 templ ControlPage(data ControlPageData) {
 	@Layout(data.ControlID) {
 		<div class="control-header">
-			<h1>{ data.ControlID }</h1>
+			<div class="page-header">
+				<div>
+					<h1>{ data.ControlID }</h1>
+					<p class="page-subtitle">Edit configuration and review aggregate data on one page.</p>
+				</div>
+			</div>
 			<div class="card-meta">
 				<span class="badge">{ data.ControlType }</span>
 				<span>{ fmt.Sprintf("%d states", data.NumStates) }</span>
-				if data.ModelID != "" {
-					<span>{ fmt.Sprintf("model: %s", data.ModelID) }</span>
-				}
 			</div>
-			if len(data.StateLabels) > 0 {
-				<div class="card-labels">
-					for _, label := range data.StateLabels {
-						<span class="label">{ label }</span>
+		</div>
+		@ControlForm(data.FormData)
+		<div class="models-section">
+			<div class="page-header">
+				<div>
+					<h2>Models</h2>
+					<p class="page-subtitle">Optional model metadata. Ingest can still supply model IDs directly.</p>
+				</div>
+			</div>
+			if data.ModelForm.Error != "" {
+				<div class="form-errors">
+					<p>{ data.ModelForm.Error }</p>
+				</div>
+			}
+			if len(data.Models) > 0 {
+				<div class="models-list">
+					for _, model := range data.Models {
+						<form method="post" action={ templ.SafeURL(model.Action) } class="model-row">
+							<label class="form-field">
+								<span>Model ID</span>
+								<input type="text" name="modelId" value={ modelRowValue(model) } required/>
+							</label>
+							if model.Error != "" {
+								<div class="form-errors">
+									<p>{ model.Error }</p>
+								</div>
+							}
+							<button type="submit" class="btn btn-secondary">Save model</button>
+						</form>
 					}
 				</div>
 			}
+			<form method="post" action={ templ.SafeURL(data.ModelForm.Action) } class="model-row model-row-new">
+				<label class="form-field">
+					<span>New model ID</span>
+					<input type="text" name="modelId" value={ data.ModelForm.ModelID } required/>
+				</label>
+				<button type="submit" class="btn">Add model</button>
+			</form>
 		</div>
+		if len(data.ModelOptions) > 0 {
+			<div class="page-header">
+				<div>
+					<h2>Analytics View</h2>
+					<p class="page-subtitle">Choose which model-partitioned aggregate data to visualize.</p>
+				</div>
+			</div>
+			<div class="quarter-selector">
+				for _, model := range data.ModelOptions {
+					<a href={ templ.SafeURL(model.PageURL) } class={ quarterButtonClass(model.Selected) }>{ model.ModelID }</a>
+				}
+			</div>
+		}
 		if len(data.Quarters) > 0 {
 			<div class="quarter-selector">
 				for _, q := range data.Quarters {
 					<button
 						class={ quarterButtonClass(q.Selected) }
-						hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&quarter=%d", url.QueryEscape(data.ControlID), q.QuarterIndex) }
+						hx-get={ fmt.Sprintf("/partials/heatmap?controlId=%s&modelId=%s&quarter=%d", url.QueryEscape(data.ControlID), url.QueryEscape(data.ModelID), q.QuarterIndex) }
 						hx-target="#heatmap-container"
 						hx-swap="innerHTML"
 					>
@@ -76,4 +147,11 @@ templ HeatmapCanvas(bucketJSON string) {
 	<div class="heatmap-wrapper">
 		<canvas class="heatmap" data-buckets={ bucketJSON } width="900" height="200"></canvas>
 	</div>
+}
+
+func modelRowValue(model ModelRowData) string {
+	if model.DraftModelID != "" {
+		return model.DraftModelID
+	}
+	return model.ModelID
 }

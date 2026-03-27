@@ -67,7 +67,7 @@ func TestHealthReturns200(t *testing.T) {
 // TestControlsAccepted verifies valid control payloads are accepted and persisted.
 func TestControlsAccepted(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "light", "controlType": "discrete", "numStates": 3}
+	body := map[string]any{"controlId": "light", "controlType": "radio buttons", "numStates": 3}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
@@ -80,12 +80,25 @@ func TestControlsAccepted(t *testing.T) {
 	if c.NumStates != 3 {
 		t.Fatalf("expected 3 states, got %d", c.NumStates)
 	}
+	if c.ControlType != storage.ControlTypeRadioButtons {
+		t.Fatalf("expected normalized control type %q, got %q", storage.ControlTypeRadioButtons, c.ControlType)
+	}
 }
 
 // TestControlsRejectsMissingFields verifies controls requests fail when required fields are missing.
 func TestControlsRejectsMissingFields(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlType": "discrete", "numStates": 3}
+	body := map[string]any{"controlType": "radio buttons", "numStates": 3}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestControlsRejectReservedNewControlID verifies the reserved UI route segment cannot be stored as a control ID.
+func TestControlsRejectReservedNewControlID(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{"controlId": "new", "controlType": "radio buttons", "numStates": 2}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -104,7 +117,7 @@ func TestControlsRejectEmptyBody(t *testing.T) {
 // TestControlsRejectTrailingJSON verifies the API rejects multiple concatenated JSON values.
 func TestControlsRejectTrailingJSON(t *testing.T) {
 	db := openTestDB(t)
-	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"discrete","numStates":3}{"extra":true}`)
+	w := postRaw(HandleControls(db), `{"controlId":"light","controlType":"radio buttons","numStates":3}{"extra":true}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -113,7 +126,7 @@ func TestControlsRejectTrailingJSON(t *testing.T) {
 // TestControlsAcceptSingleJSONValueWithTrailingWhitespace verifies trailing whitespace does not invalidate a single JSON payload.
 func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 	db := openTestDB(t)
-	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"discrete\",\"numStates\":3\n}\n")
+	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"radio buttons\",\"numStates\":3\n}\n")
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
@@ -122,7 +135,7 @@ func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 // TestControlsRejectsInvalidNumStates verifies controls validation enforces the supported state range.
 func TestControlsRejectsInvalidNumStates(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 1}
+	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": 1}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -142,20 +155,96 @@ func TestControlsRejectsBadControlType(t *testing.T) {
 // TestControlsRejectsStateLabelsMismatch verifies provided state labels must match the configured state count.
 func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "x", "controlType": "discrete", "numStates": 2, "stateLabels": []string{"a"}}
+	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"a"}}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
 
-// TestControlsRejectsSliderWithNonSixStates verifies slider controls keep their fixed six-state contract.
+// TestControlsRejectsSlidersWithNonSixStates verifies sliders keep their fixed six-state contract.
 func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "slider", "controlType": "slider", "numStates": 5}
+	body := map[string]any{"controlId": "slider", "controlType": "sliders", "numStates": 5}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestControlsRejectStructuralChangeWithAggregates verifies the API cannot change blob shape once data exists.
+func TestControlsRejectStructuralChangeWithAggregates(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	body := map[string]any{"controlId": "mode", "controlType": "radio buttons", "numStates": 3}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(ctx, db, "mode")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	if control.NumStates != 2 {
+		t.Fatalf("expected control to keep 2 states, got %d", control.NumStates)
+	}
+	data, err := storage.GetAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2)
+	if err != nil {
+		t.Fatalf("get aggregate: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatalf("expected existing aggregate data to remain readable")
+	}
+}
+
+// TestControlsCanUpdateLabelsWithAggregates verifies non-structural API edits still succeed once aggregates exist.
+func TestControlsCanUpdateLabelsWithAggregates(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+		StateLabels: []string{"off", "on"},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	body := map[string]any{"controlId": "mode", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"cool", "warm"}}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(ctx, db, "mode")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	if control.StateLabels[0] != "cool" || control.StateLabels[1] != "warm" {
+		t.Fatalf("expected labels update, got %+v", control.StateLabels)
 	}
 }
 
@@ -163,7 +252,7 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 func TestHoldingAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -189,7 +278,7 @@ func TestHoldingRejectsUnknownControl(t *testing.T) {
 func TestTransitionAccepted(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -205,7 +294,7 @@ func TestTransitionAccepted(t *testing.T) {
 func TestTransitionRejectsSelfTransition(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
-		ControlID: "c", ControlType: storage.ControlTypeDiscrete, NumStates: 3,
+		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}

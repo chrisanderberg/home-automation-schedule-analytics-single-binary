@@ -63,7 +63,7 @@ HAA_LATITUDE=59.33 HAA_LONGITUDE=18.07 make run
 ```bash
 curl -X POST http://localhost:8080/api/v1/controls \
   -H 'Content-Type: application/json' \
-  -d '{"controlId":"light","controlType":"discrete","numStates":3,"stateLabels":["off","dim","bright"]}'
+  -d '{"controlId":"light","controlType":"radio buttons","numStates":3,"stateLabels":["off","dim","bright"]}'
 ```
 
 ### Example: ingest a holding interval

@@ -14,9 +14,15 @@ type ControlWithStats struct {
 // HomePage renders the top-level control listing view.
 templ HomePage(controls []ControlWithStats) {
 	@Layout("Home") {
-		<h1>Controls</h1>
+		<div class="page-header">
+			<div>
+				<h1>Controls</h1>
+				<p class="page-subtitle">Manage control configuration in the UI.</p>
+			</div>
+			<a href="/controls/new" class="btn">Add control</a>
+		</div>
 		if len(controls) == 0 {
-			<p class="empty">No controls registered yet. Use the API to add controls.</p>
+			<p class="empty">No controls registered yet. Add one to start configuring controls in the UI.</p>
 		} else {
 			<div class="card-grid">
 				for _, c := range controls {

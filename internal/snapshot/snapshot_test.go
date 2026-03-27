@@ -24,7 +24,7 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 		t.Fatalf("init schema: %v", err)
 	}
 	if err := storage.UpsertControl(ctx, db, storage.Control{
-		ControlID: "c1", ControlType: storage.ControlTypeDiscrete, NumStates: 2,
+		ControlID: "c1", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}

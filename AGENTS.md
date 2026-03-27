@@ -22,6 +22,13 @@
 - When requirements emerge from prototypes or examples, capture them in `REQUIREMENTS.md` in a reusable form.
 - Keep `REQUIREMENTS.md` concise and reviewable. Do not add task-specific notes that will not matter to future work.
 
+## Requirements update checkpoint
+- Before declaring work complete, review whether the task introduced any new reusable defaults, constraints, mappings, invariants, or UI behavior that should persist beyond the immediate change.
+- If yes, update `REQUIREMENTS.md` in the same change.
+- If no, explicitly state in the final response that no reusable guidance was discovered.
+- Do not defer this review until later.
+- Agents must not finish a task that changes behavior, defaults, validation, or UI-to-domain mappings without explicitly considering whether that behavior belongs in `REQUIREMENTS.md`.
+
 ## Execution rules
 - If something is not specified, do not guess silently. Surface the gap or make the narrowest safe assumption, and record that assumption in `REQUIREMENTS.md` under `Open questions` or an `Assumptions` section if one is needed.
 - Prefer parameterization over hardcoding when requirements are still evolving.
@@ -37,6 +44,7 @@ For each milestone:
 - Create file structure and tests that define expected behavior.
 - Ensure `go test ./...` runs during scaffolding, even if some tests fail because implementation is pending.
 - Complete implementation until tests pass.
+- Update `REQUIREMENTS.md` with any reusable guidance discovered during the milestone.
 - Run code review tools, fix issues, and rerun until code review comes back clean.
 
 ## Definition of done
@@ -44,6 +52,8 @@ For each milestone:
 - No placeholder TODO sentinels remain in production code unless explicitly approved.
 - Non-obvious logic has comments explaining intent or invariants.
 - Any new reusable implementation guidance discovered during the task is added to the soft requirements in `REQUIREMENTS.md`.
+- `REQUIREMENTS.md` has been reviewed for reusable guidance introduced by the task.
+- The final response states either what was added to `REQUIREMENTS.md` or that no reusable guidance was discovered.
 
 ## Commands
 

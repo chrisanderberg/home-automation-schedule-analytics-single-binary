@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"slices"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -14,6 +16,9 @@ import (
 )
 
 var ErrNotFound = errors.New("not found")
+var ErrConflict = errors.New("conflict")
+var ErrValidation = errors.New("validation error")
+var ErrStructureLocked = errors.New("structure locked")
 var ErrAggregateBlobSizeMismatch = errors.New("aggregate blob size mismatch")
 
 // Open creates a SQLite handle configured for this repository's schema expectations.
@@ -56,6 +61,130 @@ func UpsertControl(ctx context.Context, db *sql.DB, control Control) error {
 	return err
 }
 
+func insertControl(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, control Control) error {
+	labels, err := encodeLabels(control.StateLabels)
+	if err != nil {
+		return err
+	}
+	result, err := exec.ExecContext(
+		ctx,
+		`INSERT INTO controls (control_id, control_type, num_states, state_labels)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(control_id) DO NOTHING`,
+		control.ControlID,
+		string(control.ControlType),
+		control.NumStates,
+		labels,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrConflict
+	}
+	return nil
+}
+
+// SaveControl creates a new control or updates an existing control, including control-id renames.
+func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, control Control) error {
+	if previousControlID == "" {
+		return insertControl(ctx, db, control)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var existing Control
+	var existingType string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT control_id, control_type, num_states, state_labels FROM controls WHERE control_id = ?`,
+		previousControlID,
+	).Scan(&existing.ControlID, &existingType, &existing.NumStates, new(sql.NullString)); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	existing.ControlType = normalizeControlType(ControlType(existingType))
+
+	var aggregateExists int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? LIMIT 1`, previousControlID).Scan(&aggregateExists)
+	switch {
+	case err == nil:
+		if existing.NumStates != control.NumStates || existing.ControlType != control.ControlType {
+			return ErrStructureLocked
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+
+	if previousControlID == control.ControlID {
+		labels, err := encodeLabels(control.StateLabels)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE controls
+			 SET control_type = ?, num_states = ?, state_labels = ?
+			 WHERE control_id = ?`,
+			string(control.ControlType),
+			control.NumStates,
+			labels,
+			control.ControlID,
+		); err != nil {
+			return err
+		}
+	} else {
+		row := tx.QueryRowContext(ctx, `SELECT 1 FROM controls WHERE control_id = ?`, control.ControlID)
+		var exists int
+		switch err := row.Scan(&exists); {
+		case err == nil:
+			return ErrConflict
+		case errors.Is(err, sql.ErrNoRows):
+		default:
+			return err
+		}
+
+		if err := insertControl(ctx, tx, control); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE aggregates SET control_id = ? WHERE control_id = ?`,
+			control.ControlID,
+			previousControlID,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE models SET control_id = ? WHERE control_id = ?`,
+			control.ControlID,
+			previousControlID,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM controls WHERE control_id = ?`, previousControlID); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // GetControl loads one control definition by identifier.
 func GetControl(ctx context.Context, db *sql.DB, controlID string) (Control, error) {
 	row := db.QueryRowContext(ctx, `SELECT control_id, control_type, num_states, state_labels FROM controls WHERE control_id = ?`, controlID)
@@ -68,7 +197,7 @@ func GetControl(ctx context.Context, db *sql.DB, controlID string) (Control, err
 		}
 		return Control{}, err
 	}
-	control.ControlType = ControlType(controlType)
+	control.ControlType = normalizeControlType(ControlType(controlType))
 	if labels.Valid && labels.String != "" {
 		decoded, err := decodeLabels(labels.String)
 		if err != nil {
@@ -94,7 +223,7 @@ func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 		if err := rows.Scan(&c.ControlID, &controlType, &c.NumStates, &labels); err != nil {
 			return nil, err
 		}
-		c.ControlType = ControlType(controlType)
+		c.ControlType = normalizeControlType(ControlType(controlType))
 		if labels.Valid && labels.String != "" {
 			decoded, err := decodeLabels(labels.String)
 			if err != nil {
@@ -105,6 +234,172 @@ func ListControls(ctx context.Context, db *sql.DB) ([]Control, error) {
 		controls = append(controls, c)
 	}
 	return controls, rows.Err()
+}
+
+func normalizeControlType(controlType ControlType) ControlType {
+	normalized := strings.TrimSpace(string(controlType))
+	switch normalized {
+	case "discrete", string(ControlTypeRadioButtons):
+		return ControlTypeRadioButtons
+	case "slider", "continuous", string(ControlTypeSliders):
+		return ControlTypeSliders
+	default:
+		log.Printf("unknown control type: %q", normalized)
+		return controlType
+	}
+}
+
+// ListModels returns registered and inferred models for one control in stable order.
+func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, error) {
+	modelMap := make(map[string]Model)
+
+	rows, err := db.QueryContext(ctx, `SELECT control_id, model_id FROM models WHERE control_id = ? ORDER BY model_id`, controlID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var model Model
+		if err := rows.Scan(&model.ControlID, &model.ModelID); err != nil {
+			return nil, err
+		}
+		modelMap[model.ModelID] = model
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	keys, err := ListAggregateKeys(ctx, db, controlID)
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range keys {
+		if _, ok := modelMap[key.ModelID]; !ok {
+			modelMap[key.ModelID] = Model{ControlID: controlID, ModelID: key.ModelID}
+		}
+	}
+
+	modelIDs := make([]string, 0, len(modelMap))
+	for modelID := range modelMap {
+		modelIDs = append(modelIDs, modelID)
+	}
+	slices.Sort(modelIDs)
+
+	models := make([]Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, modelMap[modelID])
+	}
+	return models, nil
+}
+
+func insertModel(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, controlID, modelID string) error {
+	result, err := exec.ExecContext(
+		ctx,
+		`INSERT INTO models (control_id, model_id) VALUES (?, ?)
+		 ON CONFLICT(control_id, model_id) DO NOTHING`,
+		controlID,
+		modelID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrConflict
+	}
+	return nil
+}
+
+// SaveModel creates or updates one control model, including model-id renames.
+func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID string, model Model) error {
+	model.ControlID = controlID
+	model.ModelID = strings.TrimSpace(model.ModelID)
+	if model.ModelID == "" {
+		return ErrValidation
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if previousModelID != "" {
+		var sourceExists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, previousModelID).Scan(&sourceExists)
+		switch {
+		case err == nil:
+		case errors.Is(err, sql.ErrNoRows):
+			err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? AND model_id = ?`, controlID, previousModelID).Scan(&sourceExists)
+			switch {
+			case err == nil:
+			case errors.Is(err, sql.ErrNoRows):
+				return ErrNotFound
+			default:
+				return err
+			}
+		default:
+			return err
+		}
+	}
+
+	if previousModelID == "" {
+		var exists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, model.ModelID).Scan(&exists)
+		switch {
+		case err == nil:
+			return ErrConflict
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+		if err := insertModel(ctx, tx, controlID, model.ModelID); err != nil {
+			return err
+		}
+	} else if previousModelID == model.ModelID {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO models (control_id, model_id) VALUES (?, ?)
+			 ON CONFLICT(control_id, model_id) DO NOTHING`,
+			controlID, model.ModelID,
+		); err != nil {
+			return err
+		}
+	} else {
+		var exists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, model.ModelID).Scan(&exists)
+		switch {
+		case err == nil:
+			return ErrConflict
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+		err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? AND model_id = ?`, controlID, model.ModelID).Scan(&exists)
+		switch {
+		case err == nil:
+			return ErrConflict
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+
+		if err := insertModel(ctx, tx, controlID, model.ModelID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE aggregates SET model_id = ? WHERE control_id = ? AND model_id = ?`, model.ModelID, controlID, previousModelID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE control_id = ? AND model_id = ?`, controlID, previousModelID); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ListAggregateKeys returns the aggregate keys recorded for a control in stable display order.

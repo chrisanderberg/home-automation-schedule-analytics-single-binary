@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
@@ -10,6 +11,44 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
 
+func setAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, value uint64) {
+	t.Helper()
+	if err := UpdateAggregate(ctx, db, key, numStates, func(blob []byte) error {
+		b, err := domain.NewBlob(numStates)
+		if err != nil {
+			return err
+		}
+		copy(b.Data(), blob)
+		if err := b.SetU64(idx, value); err != nil {
+			return err
+		}
+		copy(blob, b.Data())
+		return nil
+	}); err != nil {
+		t.Fatalf("update aggregate: %v", err)
+	}
+}
+
+func requireAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, want uint64) {
+	t.Helper()
+	data, err := GetAggregate(ctx, db, key, numStates)
+	if err != nil {
+		t.Fatalf("get aggregate: %v", err)
+	}
+	b, err := domain.NewBlob(numStates)
+	if err != nil {
+		t.Fatalf("new blob: %v", err)
+	}
+	copy(b.Data(), data)
+	got, err := b.GetU64(idx)
+	if err != nil {
+		t.Fatalf("read blob: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected aggregate value %d, got %d", want, got)
+	}
+}
+
 // TestControlCRUD verifies controls round-trip through storage and missing lookups return ErrNotFound.
 func TestControlCRUD(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
@@ -17,7 +56,7 @@ func TestControlCRUD(t *testing.T) {
 
 	c := Control{
 		ControlID:   "light",
-		ControlType: ControlTypeDiscrete,
+		ControlType: ControlTypeRadioButtons,
 		NumStates:   3,
 		StateLabels: []string{"off", "dim", "bright"},
 	}
@@ -28,7 +67,7 @@ func TestControlCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.ControlID != "light" || got.NumStates != 3 || got.ControlType != ControlTypeDiscrete {
+	if got.ControlID != "light" || got.NumStates != 3 || got.ControlType != ControlTypeRadioButtons {
 		t.Fatalf("control mismatch: %+v", got)
 	}
 	if len(got.StateLabels) != 3 || got.StateLabels[0] != "off" {
@@ -41,12 +80,91 @@ func TestControlCRUD(t *testing.T) {
 	}
 }
 
+// TestSaveModelListsRegisteredModels verifies saved models are returned for the control.
+func TestSaveModelListsRegisteredModels(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := SaveModel(ctx, db, "light", "", Model{ModelID: "weekday"}); err != nil {
+		t.Fatalf("save first model: %v", err)
+	}
+	if err := SaveModel(ctx, db, "light", "", Model{ModelID: "weekend"}); err != nil {
+		t.Fatalf("save second model: %v", err)
+	}
+
+	models, err := ListModels(ctx, db, "light")
+	if err != nil {
+		t.Fatalf("list models: %v", err)
+	}
+	if len(models) != 2 || models[0].ModelID != "weekday" || models[1].ModelID != "weekend" {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
+
+// TestSaveModelRenameMovesAggregates verifies model-id edits preserve aggregate rows.
+func TestSaveModelRenameMovesAggregates(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := SaveModel(ctx, db, "light", "", Model{ModelID: "old"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "light", ModelID: "old", QuarterIndex: 1}, 2); err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+	setAggregateValue(t, ctx, db, AggregateKey{ControlID: "light", ModelID: "old", QuarterIndex: 1}, 2, 0, 42)
+
+	if err := SaveModel(ctx, db, "light", "old", Model{ModelID: "new"}); err != nil {
+		t.Fatalf("rename model: %v", err)
+	}
+	keys, err := ListAggregateKeys(ctx, db, "light")
+	if err != nil {
+		t.Fatalf("list keys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ModelID != "new" {
+		t.Fatalf("expected aggregate to move with model rename, got %+v", keys)
+	}
+	requireAggregateValue(t, ctx, db, AggregateKey{ControlID: "light", ModelID: "new", QuarterIndex: 1}, 2, 0, 42)
+}
+
+// TestSaveModelRejectsEmptyModelID verifies blank model IDs are treated as validation failures.
+func TestSaveModelRejectsEmptyModelID(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "", Model{ModelID: "   "})
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+// TestSaveModelRejectsMissingSource verifies updates do not silently create a destination when the source is absent.
+func TestSaveModelRejectsMissingSource(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "missing", Model{ModelID: "new"})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 // TestAggregateCreateUpdate verifies aggregates can be created, mutated, and read back.
 func TestAggregateCreateUpdate(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeDiscrete, NumStates: 3}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 3}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
 
@@ -114,7 +232,7 @@ func TestAggregateConcurrentUpdates(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
 
@@ -162,7 +280,7 @@ func TestUpdateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
 
@@ -187,7 +305,7 @@ func TestGetOrCreateAggregateRejectsMismatchedBlobSize(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "bad", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
 
@@ -212,7 +330,7 @@ func TestGetAggregateRejectsMismatchedBlobSize(t *testing.T) {
 
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO controls (control_id, control_type, num_states, state_labels) VALUES (?, ?, ?, ?)`,
-		"bad", string(ControlTypeDiscrete), 2, "",
+		"bad", string(ControlTypeRadioButtons), 2, "",
 	)
 	if err != nil {
 		t.Fatalf("seed control: %v", err)
@@ -236,10 +354,10 @@ func TestListControls(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "b", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "b", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if err := UpsertControl(ctx, db, Control{ControlID: "a", ControlType: ControlTypeSlider, NumStates: 6}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "a", ControlType: ControlTypeSliders, NumStates: 6}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 
@@ -255,12 +373,100 @@ func TestListControls(t *testing.T) {
 	}
 }
 
+// TestSaveControlRenameMovesAggregates verifies control-id edits preserve aggregate rows.
+func TestSaveControlRenameMovesAggregates(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "old", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := SaveModel(ctx, db, "old", "", Model{ModelID: "m"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "old", ModelID: "m", QuarterIndex: 1}, 2); err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+	setAggregateValue(t, ctx, db, AggregateKey{ControlID: "old", ModelID: "m", QuarterIndex: 1}, 2, 0, 99)
+
+	if err := SaveControl(ctx, db, "old", Control{
+		ControlID:   "new",
+		ControlType: ControlTypeRadioButtons,
+		NumStates:   2,
+		StateLabels: []string{"off", "on"},
+	}); err != nil {
+		t.Fatalf("save control: %v", err)
+	}
+
+	if _, err := GetControl(ctx, db, "old"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected old control to be gone, got %v", err)
+	}
+	got, err := GetControl(ctx, db, "new")
+	if err != nil {
+		t.Fatalf("get new control: %v", err)
+	}
+	if got.ControlID != "new" || len(got.StateLabels) != 2 {
+		t.Fatalf("unexpected control: %+v", got)
+	}
+
+	keys, err := ListAggregateKeys(ctx, db, "new")
+	if err != nil {
+		t.Fatalf("list aggregate keys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ControlID != "new" {
+		t.Fatalf("expected aggregate to move to new control id, got %+v", keys)
+	}
+	requireAggregateValue(t, ctx, db, AggregateKey{ControlID: "new", ModelID: "m", QuarterIndex: 1}, 2, 0, 99)
+	models, err := ListModels(ctx, db, "new")
+	if err != nil {
+		t.Fatalf("list models: %v", err)
+	}
+	if len(models) != 1 || models[0].ModelID != "m" || models[0].ControlID != "new" {
+		t.Fatalf("expected model metadata to move with renamed control, got %+v", models)
+	}
+}
+
+// TestSaveControlRejectsConflictingCreate verifies the UI save path does not overwrite existing controls.
+func TestSaveControlRejectsConflictingCreate(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	err := SaveControl(ctx, db, "", Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 3})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+// TestSaveModelRenameRejectsAggregateOnlyConflict verifies renames cannot target model IDs that only exist in aggregates.
+func TestSaveModelRenameRejectsAggregateOnlyConflict(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := SaveModel(ctx, db, "light", "", Model{ModelID: "weekday"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "light", ModelID: "vacation", QuarterIndex: 1}, 2); err != nil {
+		t.Fatalf("create aggregate: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "weekday", Model{ModelID: "vacation"})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
 // TestListAggregateKeys verifies aggregate keys are returned in stable model ordering.
 func TestListAggregateKeys(t *testing.T) {
 	db := testutil.OpenTestDB(t, Open, InitSchema)
 	ctx := context.Background()
 
-	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeDiscrete, NumStates: 2}); err != nil {
+	if err := UpsertControl(ctx, db, Control{ControlID: "c", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
 		t.Fatalf("upsert control: %v", err)
 	}
 
