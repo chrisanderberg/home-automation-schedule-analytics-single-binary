@@ -111,8 +111,15 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 		}
 	}
 
-	if form.ControlType == string(storage.ControlTypeSliders) && allLabelsBlank(form.StateLabels) {
-		copy(form.StateLabels, defaultSliderLabels)
+	if form.ControlType == string(storage.ControlTypeSliders) {
+		if len(form.StateLabels) < len(defaultSliderLabels) {
+			form.StateLabels = append(form.StateLabels, defaultSliderLabels[len(form.StateLabels):]...)
+		}
+		for i := 0; i < len(form.StateLabels) && i < len(defaultSliderLabels); i++ {
+			if strings.TrimSpace(form.StateLabels[i]) == "" {
+				form.StateLabels[i] = defaultSliderLabels[i]
+			}
+		}
 	}
 	if form.ControlType == string(storage.ControlTypeRadioButtons) {
 		applyDefaultRadioButtonLabels(form.StateLabels)
@@ -246,6 +253,8 @@ func mapControlSaveError(err error) string {
 	switch {
 	case errors.Is(err, storage.ErrConflict):
 		return "control ID already exists"
+	case errors.Is(err, storage.ErrStructureLocked):
+		return "cannot change control structure after aggregate data has been recorded"
 	default:
 		return "failed to save control"
 	}
@@ -257,6 +266,8 @@ func mapModelSaveError(err error) string {
 		return "model ID is required"
 	case errors.Is(err, storage.ErrConflict):
 		return "model ID already exists"
+	case errors.Is(err, storage.ErrNotFound):
+		return "model ID was not found"
 	default:
 		return "failed to save model"
 	}

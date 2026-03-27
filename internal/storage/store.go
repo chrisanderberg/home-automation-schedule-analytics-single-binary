@@ -17,6 +17,7 @@ import (
 var ErrNotFound = errors.New("not found")
 var ErrConflict = errors.New("conflict")
 var ErrValidation = errors.New("validation error")
+var ErrStructureLocked = errors.New("structure locked")
 var ErrAggregateBlobSizeMismatch = errors.New("aggregate blob size mismatch")
 
 // Open creates a SQLite handle configured for this repository's schema expectations.
@@ -95,10 +96,6 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 		return insertControl(ctx, db, control)
 	}
 
-	if previousControlID == control.ControlID {
-		return UpsertControl(ctx, db, control)
-	}
-
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -109,37 +106,80 @@ func SaveControl(ctx context.Context, db *sql.DB, previousControlID string, cont
 		}
 	}()
 
-	row := tx.QueryRowContext(ctx, `SELECT 1 FROM controls WHERE control_id = ?`, control.ControlID)
-	var exists int
-	switch err := row.Scan(&exists); {
+	var existing Control
+	var existingType string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT control_id, control_type, num_states, state_labels FROM controls WHERE control_id = ?`,
+		previousControlID,
+	).Scan(&existing.ControlID, &existingType, &existing.NumStates, new(sql.NullString)); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	existing.ControlType = normalizeControlType(ControlType(existingType))
+
+	var aggregateExists int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? LIMIT 1`, previousControlID).Scan(&aggregateExists)
+	switch {
 	case err == nil:
-		return ErrConflict
-	case errors.Is(err, sql.ErrNoRows):
-	default:
+		if existing.NumStates != control.NumStates || existing.ControlType != control.ControlType {
+			return ErrStructureLocked
+		}
+	case !errors.Is(err, sql.ErrNoRows):
 		return err
 	}
 
-	if err := insertControl(ctx, tx, control); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`UPDATE aggregates SET control_id = ? WHERE control_id = ?`,
-		control.ControlID,
-		previousControlID,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`UPDATE models SET control_id = ? WHERE control_id = ?`,
-		control.ControlID,
-		previousControlID,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM controls WHERE control_id = ?`, previousControlID); err != nil {
-		return err
+	if previousControlID == control.ControlID {
+		labels, err := encodeLabels(control.StateLabels)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE controls
+			 SET control_type = ?, num_states = ?, state_labels = ?
+			 WHERE control_id = ?`,
+			string(control.ControlType),
+			control.NumStates,
+			labels,
+			control.ControlID,
+		); err != nil {
+			return err
+		}
+	} else {
+		row := tx.QueryRowContext(ctx, `SELECT 1 FROM controls WHERE control_id = ?`, control.ControlID)
+		var exists int
+		switch err := row.Scan(&exists); {
+		case err == nil:
+			return ErrConflict
+		case errors.Is(err, sql.ErrNoRows):
+		default:
+			return err
+		}
+
+		if err := insertControl(ctx, tx, control); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE aggregates SET control_id = ? WHERE control_id = ?`,
+			control.ControlID,
+			previousControlID,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE models SET control_id = ? WHERE control_id = ?`,
+			control.ControlID,
+			previousControlID,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM controls WHERE control_id = ?`, previousControlID); err != nil {
+			return err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -271,6 +311,25 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 			_ = tx.Rollback()
 		}
 	}()
+
+	if previousModelID != "" {
+		var sourceExists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM models WHERE control_id = ? AND model_id = ?`, controlID, previousModelID).Scan(&sourceExists)
+		switch {
+		case err == nil:
+		case errors.Is(err, sql.ErrNoRows):
+			err = tx.QueryRowContext(ctx, `SELECT 1 FROM aggregates WHERE control_id = ? AND model_id = ?`, controlID, previousModelID).Scan(&sourceExists)
+			switch {
+			case err == nil:
+			case errors.Is(err, sql.ErrNoRows):
+				return ErrNotFound
+			default:
+				return err
+			}
+		default:
+			return err
+		}
+	}
 
 	if previousModelID == "" {
 		var exists int

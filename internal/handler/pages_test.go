@@ -243,6 +243,43 @@ func TestControlPageSelectsRequestedModel(t *testing.T) {
 	}
 }
 
+// TestControlPageDefaultsToModelWithData verifies the default analytics selection prefers a model that has aggregates.
+func TestControlPageDefaultsToModelWithData(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := storage.SaveModel(ctx, db, "mode", "", storage.Model{ModelID: "weekday"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if err := storage.SaveModel(ctx, db, "mode", "", storage.Model{ModelID: "weekend"}); err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "weekend",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode", nil)
+	req.SetPathValue("controlID", "mode")
+	w := httptest.NewRecorder()
+	HandleControlPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `hx-get="/partials/heatmap?controlId=mode&amp;modelId=weekend&amp;quarter=12"`) {
+		t.Fatalf("expected model with data to be selected, got %q", body)
+	}
+}
+
 // TestControlPageReturns404 verifies missing controls return a not-found page response.
 func TestControlPageReturns404(t *testing.T) {
 	db := openTestDB(t)

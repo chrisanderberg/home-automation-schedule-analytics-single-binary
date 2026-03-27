@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -47,9 +48,34 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, errMsg)
 			return
 		}
-		if err := storage.UpsertControl(r.Context(), db, control); err != nil {
-			log.Printf("handleControls upsert failed: %v", err)
+		existing, err := storage.GetControl(r.Context(), db, control.ControlID)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			err = storage.SaveControl(r.Context(), db, "", control)
+		case err != nil:
+			log.Printf("handleControls get control failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		default:
+			if lockErr := rejectStructuralChange(existing, control); lockErr != "" {
+				writeError(w, http.StatusBadRequest, lockErr)
+				return
+			}
+			err = storage.SaveControl(r.Context(), db, existing.ControlID, control)
+		}
+		if err != nil {
+			status := http.StatusInternalServerError
+			message := "internal server error"
+			switch {
+			case errors.Is(err, storage.ErrConflict):
+				status = http.StatusBadRequest
+				message = "control ID already exists"
+			case errors.Is(err, storage.ErrStructureLocked):
+				status = http.StatusBadRequest
+				message = "cannot change control structure after aggregate data has been recorded"
+			}
+			log.Printf("handleControls save failed: %v", err)
+			writeError(w, status, message)
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})

@@ -80,6 +80,9 @@ func TestControlsAccepted(t *testing.T) {
 	if c.NumStates != 3 {
 		t.Fatalf("expected 3 states, got %d", c.NumStates)
 	}
+	if c.ControlType != storage.ControlTypeRadioButtons {
+		t.Fatalf("expected normalized control type %q, got %q", storage.ControlTypeRadioButtons, c.ControlType)
+	}
 }
 
 // TestControlsRejectsMissingFields verifies controls requests fail when required fields are missing.
@@ -166,6 +169,82 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestControlsRejectStructuralChangeWithAggregates verifies the API cannot change blob shape once data exists.
+func TestControlsRejectStructuralChangeWithAggregates(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	body := map[string]any{"controlId": "mode", "controlType": "radio buttons", "numStates": 3}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(ctx, db, "mode")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	if control.NumStates != 2 {
+		t.Fatalf("expected control to keep 2 states, got %d", control.NumStates)
+	}
+	data, err := storage.GetAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2)
+	if err != nil {
+		t.Fatalf("get aggregate: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatalf("expected existing aggregate data to remain readable")
+	}
+}
+
+// TestControlsCanUpdateLabelsWithAggregates verifies non-structural API edits still succeed once aggregates exist.
+func TestControlsCanUpdateLabelsWithAggregates(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := storage.UpsertControl(ctx, db, storage.Control{
+		ControlID: "mode", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
+		StateLabels: []string{"off", "on"},
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := storage.GetOrCreateAggregate(ctx, db, storage.AggregateKey{
+		ControlID:    "mode",
+		ModelID:      "default",
+		QuarterIndex: 12,
+	}, 2); err != nil {
+		t.Fatalf("seed aggregate: %v", err)
+	}
+
+	body := map[string]any{"controlId": "mode", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"cool", "warm"}}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(ctx, db, "mode")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	if control.StateLabels[0] != "cool" || control.StateLabels[1] != "warm" {
+		t.Fatalf("expected labels update, got %+v", control.StateLabels)
 	}
 }
 

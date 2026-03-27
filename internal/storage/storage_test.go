@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
@@ -9,6 +10,44 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/domain"
 	"home-automation-schedule-analytics-single-bin/internal/testutil"
 )
+
+func setAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, value uint64) {
+	t.Helper()
+	if err := UpdateAggregate(ctx, db, key, numStates, func(blob []byte) error {
+		b, err := domain.NewBlob(numStates)
+		if err != nil {
+			return err
+		}
+		copy(b.Data(), blob)
+		if err := b.SetU64(idx, value); err != nil {
+			return err
+		}
+		copy(blob, b.Data())
+		return nil
+	}); err != nil {
+		t.Fatalf("update aggregate: %v", err)
+	}
+}
+
+func requireAggregateValue(t *testing.T, ctx context.Context, db *sql.DB, key AggregateKey, numStates, idx int, want uint64) {
+	t.Helper()
+	data, err := GetAggregate(ctx, db, key, numStates)
+	if err != nil {
+		t.Fatalf("get aggregate: %v", err)
+	}
+	b, err := domain.NewBlob(numStates)
+	if err != nil {
+		t.Fatalf("new blob: %v", err)
+	}
+	copy(b.Data(), data)
+	got, err := b.GetU64(idx)
+	if err != nil {
+		t.Fatalf("read blob: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected aggregate value %d, got %d", want, got)
+	}
+}
 
 // TestControlCRUD verifies controls round-trip through storage and missing lookups return ErrNotFound.
 func TestControlCRUD(t *testing.T) {
@@ -77,6 +116,7 @@ func TestSaveModelRenameMovesAggregates(t *testing.T) {
 	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "light", ModelID: "old", QuarterIndex: 1}, 2); err != nil {
 		t.Fatalf("create aggregate: %v", err)
 	}
+	setAggregateValue(t, ctx, db, AggregateKey{ControlID: "light", ModelID: "old", QuarterIndex: 1}, 2, 0, 42)
 
 	if err := SaveModel(ctx, db, "light", "old", Model{ModelID: "new"}); err != nil {
 		t.Fatalf("rename model: %v", err)
@@ -88,6 +128,7 @@ func TestSaveModelRenameMovesAggregates(t *testing.T) {
 	if len(keys) != 1 || keys[0].ModelID != "new" {
 		t.Fatalf("expected aggregate to move with model rename, got %+v", keys)
 	}
+	requireAggregateValue(t, ctx, db, AggregateKey{ControlID: "light", ModelID: "new", QuarterIndex: 1}, 2, 0, 42)
 }
 
 // TestSaveModelRejectsEmptyModelID verifies blank model IDs are treated as validation failures.
@@ -101,6 +142,20 @@ func TestSaveModelRejectsEmptyModelID(t *testing.T) {
 	err := SaveModel(ctx, db, "light", "", Model{ModelID: "   "})
 	if !errors.Is(err, ErrValidation) {
 		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+// TestSaveModelRejectsMissingSource verifies updates do not silently create a destination when the source is absent.
+func TestSaveModelRejectsMissingSource(t *testing.T) {
+	db := testutil.OpenTestDB(t, Open, InitSchema)
+	ctx := context.Background()
+	if err := UpsertControl(ctx, db, Control{ControlID: "light", ControlType: ControlTypeRadioButtons, NumStates: 2}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	err := SaveModel(ctx, db, "light", "missing", Model{ModelID: "new"})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -332,6 +387,7 @@ func TestSaveControlRenameMovesAggregates(t *testing.T) {
 	if _, err := GetOrCreateAggregate(ctx, db, AggregateKey{ControlID: "old", ModelID: "m", QuarterIndex: 1}, 2); err != nil {
 		t.Fatalf("create aggregate: %v", err)
 	}
+	setAggregateValue(t, ctx, db, AggregateKey{ControlID: "old", ModelID: "m", QuarterIndex: 1}, 2, 0, 99)
 
 	if err := SaveControl(ctx, db, "old", Control{
 		ControlID:   "new",
@@ -360,6 +416,7 @@ func TestSaveControlRenameMovesAggregates(t *testing.T) {
 	if len(keys) != 1 || keys[0].ControlID != "new" {
 		t.Fatalf("expected aggregate to move to new control id, got %+v", keys)
 	}
+	requireAggregateValue(t, ctx, db, AggregateKey{ControlID: "new", ModelID: "m", QuarterIndex: 1}, 2, 0, 99)
 	models, err := ListModels(ctx, db, "new")
 	if err != nil {
 		t.Fatalf("list models: %v", err)

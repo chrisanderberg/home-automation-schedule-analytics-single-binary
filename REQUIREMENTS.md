@@ -137,6 +137,10 @@ partially defined upfront and extended as development proceeds.
   Rationale: the UI uses `/controls/new` and `/controls/{controlID}/models/new`
   as create routes, so allowing `new` as stored data would collide with page
   routing and make those resources ambiguous.
+- Prefer control pages that default their analytics selection to a model that
+  actually has aggregate data when one exists.
+  Rationale: choosing a data-backed model by default avoids landing on an empty
+  analytics view when the control already has recorded aggregates.
 
 ## Candidate promotions to hard requirements
 - None yet.

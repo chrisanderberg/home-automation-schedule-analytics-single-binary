@@ -280,6 +280,18 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 		}
 	}
 	if selectedModelID == "" && len(data.Models) > 0 {
+		keyedModels := make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			keyedModels[key.ModelID] = struct{}{}
+		}
+		for _, model := range data.Models {
+			if _, ok := keyedModels[model.ModelID]; ok {
+				selectedModelID = model.ModelID
+				break
+			}
+		}
+	}
+	if selectedModelID == "" && len(data.Models) > 0 {
 		selectedModelID = data.Models[0].ModelID
 	}
 	if selectedModelID == "" && len(keys) > 0 {

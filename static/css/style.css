@@ -244,7 +244,7 @@ h1 {
   border-style: dashed;
 }
 
-.btn-secondary {
+.btn.btn-secondary {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
@@ -253,7 +253,7 @@ h1 {
   align-items: center;
 }
 
-.btn-secondary:hover {
+.btn.btn-secondary:hover {
   background: var(--surface-hover);
 }
 
