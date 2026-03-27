@@ -294,6 +294,29 @@ func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, err
 	return models, nil
 }
 
+func insertModel(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, controlID, modelID string) error {
+	result, err := exec.ExecContext(
+		ctx,
+		`INSERT INTO models (control_id, model_id) VALUES (?, ?)
+		 ON CONFLICT(control_id, model_id) DO NOTHING`,
+		controlID,
+		modelID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrConflict
+	}
+	return nil
+}
+
 // SaveModel creates or updates one control model, including model-id renames.
 func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID string, model Model) error {
 	model.ControlID = controlID
@@ -340,7 +363,7 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO models (control_id, model_id) VALUES (?, ?)`, controlID, model.ModelID); err != nil {
+		if err := insertModel(ctx, tx, controlID, model.ModelID); err != nil {
 			return err
 		}
 	} else if previousModelID == model.ModelID {
@@ -368,7 +391,7 @@ func SaveModel(ctx context.Context, db *sql.DB, controlID, previousModelID strin
 			return err
 		}
 
-		if _, err := tx.ExecContext(ctx, `INSERT INTO models (control_id, model_id) VALUES (?, ?)`, controlID, model.ModelID); err != nil {
+		if err := insertModel(ctx, tx, controlID, model.ModelID); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE aggregates SET model_id = ? WHERE control_id = ? AND model_id = ?`, model.ModelID, controlID, previousModelID); err != nil {
