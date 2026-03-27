@@ -27,7 +27,7 @@ templ HomePage(controls []ControlWithStats) {
 		} else {
 			<div class="card-grid">
 				for _, c := range controls {
-					<a href={ templ.SafeURL(fmt.Sprintf("/controls/%s", url.PathEscape(c.ControlID))) } class="card">
+					<a href={ templ.SafeURL(fmt.Sprintf("/controls/%s/analytics", url.PathEscape(c.ControlID))) } class="card">
 						<h2 class="card-title">{ c.ControlID }</h2>
 						<div class="card-meta">
 							<span class="badge badge-type">{ c.ControlType }</span>

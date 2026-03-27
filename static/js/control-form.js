@@ -84,3 +84,10 @@
     syncSliderState();
   }
 })();
+
+// Auto-submit selector bar forms when any dropdown changes.
+document.querySelectorAll(".selector-bar select").forEach(function(sel) {
+  sel.addEventListener("change", function() {
+    this.closest("form").submit();
+  });
+});

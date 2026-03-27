@@ -105,12 +105,12 @@ func HandleCreateControl(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// HandleControlPage renders one control detail page and its quarter selector.
+// HandleControlPage renders one control config page (form + models, no analytics).
 func HandleControlPage(db *sql.DB) http.HandlerFunc {
 	return handleControlPage(db, "")
 }
 
-// handleControlPage renders one control page and optionally surfaces a top-level form error.
+// handleControlPage renders one control config page and optionally surfaces a top-level form error.
 func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		controlID := r.PathValue("controlID")
@@ -137,9 +137,9 @@ func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 			return
 		}
 
-		data, err := buildControlPageData(r, db, control, keys)
+		data, err := buildControlConfigData(r.Context(), db, control, keys)
 		if err != nil {
-			log.Printf("build control page data for %s: %v", controlID, err)
+			log.Printf("build control config data for %s: %v", controlID, err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -148,6 +148,88 @@ func handleControlPage(db *sql.DB, errMsg string) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := view.ControlPage(data).Render(r.Context(), w); err != nil {
 			log.Printf("render control: %v", err)
+		}
+	}
+}
+
+// HandleAnalyticsPage renders the analytics dashboard for one control.
+func HandleAnalyticsPage(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		controlID := r.PathValue("controlID")
+		if controlID == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		control, err := storage.GetControl(r.Context(), db, controlID)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("get control %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		keys, err := storage.ListAggregateKeys(r.Context(), db, controlID)
+		if err != nil {
+			log.Printf("list aggregate keys for %s: %v", controlID, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		data, err := buildAnalyticsDashboardData(r, db, control, keys)
+		if err != nil {
+			log.Printf("build analytics dashboard data for %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := view.AnalyticsDashboardPage(data).Render(r.Context(), w); err != nil {
+			log.Printf("render analytics: %v", err)
+		}
+	}
+}
+
+// HandleRawAnalyticsPage renders the raw data explorer for one control.
+func HandleRawAnalyticsPage(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		controlID := r.PathValue("controlID")
+		if controlID == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		control, err := storage.GetControl(r.Context(), db, controlID)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("get control %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		keys, err := storage.ListAggregateKeys(r.Context(), db, controlID)
+		if err != nil {
+			log.Printf("list aggregate keys for %s: %v", controlID, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		data, err := buildRawAnalyticsDashboardData(r, db, control, keys)
+		if err != nil {
+			log.Printf("build raw analytics data for %s: %v", controlID, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := view.RawAnalyticsDashboardPage(data).Render(r.Context(), w); err != nil {
+			log.Printf("render raw analytics: %v", err)
 		}
 	}
 }
@@ -243,7 +325,7 @@ func HandleUpdateModel(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// renderExistingControlPage renders the combined control configuration and analytics page.
+// renderExistingControlPage re-renders the control config page with form errors.
 func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.DB, control storage.Control, hasAggregates bool, form view.ControlFormData, errMsg string, modelForm view.ModelFormData, modelErr string) {
 	keys, err := storage.ListAggregateKeys(r.Context(), db, control.ControlID)
 	if err != nil {
@@ -252,9 +334,9 @@ func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.D
 		return
 	}
 
-	data, err := buildControlPageData(r, db, control, keys)
+	data, err := buildControlConfigData(r.Context(), db, control, keys)
 	if err != nil {
-		log.Printf("build control page data for %s: %v", control.ControlID, err)
+		log.Printf("build control config data for %s: %v", control.ControlID, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -274,29 +356,19 @@ func renderExistingControlPage(w http.ResponseWriter, r *http.Request, db *sql.D
 	}
 }
 
-// buildControlPageData assembles the selector state, analytics report, and model table for one control page.
-func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.ControlPageData, error) {
-	query := cloneQueryValues(r.URL.Query())
-	data := view.ControlPageData{
+// buildControlConfigData assembles the config-only view data for the control page.
+func buildControlConfigData(ctx context.Context, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.ControlConfigData, error) {
+	data := view.ControlConfigData{
 		ControlID:     control.ControlID,
 		ControlType:   string(control.ControlType),
 		NumStates:     control.NumStates,
 		StateLabels:   control.StateLabels,
-		FormData:      controlFormPageData(newControlFormData(control), control.ControlID, len(keys) > 0, ""),
-		ModelForm:     defaultModelForm(control.ControlID),
 		HasAggregates: len(keys) > 0,
+		ModelForm:     defaultModelForm(control.ControlID),
 	}
-	selectedMode := query.Get("mode")
-	if selectedMode == "" {
-		selectedMode = "report"
-	}
-	if selectedMode != "report" && selectedMode != "raw" {
-		selectedMode = "report"
-	}
-	data.AnalyticsMode = selectedMode
-	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	models, err := storage.ListModels(ctx, db, control.ControlID)
 	if err != nil {
-		return view.ControlPageData{}, err
+		return view.ControlConfigData{}, err
 	}
 	for _, model := range models {
 		data.Models = append(data.Models, view.ModelRowData{
@@ -304,67 +376,199 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 			Action:  fmt.Sprintf("/controls/%s/models/%s", url.PathEscape(control.ControlID), url.PathEscape(model.ModelID)),
 		})
 	}
+	return data, nil
+}
 
+// buildAnalyticsDashboardData assembles the analytics dashboard view data.
+func buildAnalyticsDashboardData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.AnalyticsDashboardData, error) {
+	data := view.AnalyticsDashboardData{
+		ControlID:      control.ControlID,
+		ControlType:    string(control.ControlType),
+		NumStates:      control.NumStates,
+		SelectorAction: fmt.Sprintf("/controls/%s/analytics", url.PathEscape(control.ControlID)),
+		HasAggregates:  len(keys) > 0,
+	}
+
+	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	if err != nil {
+		return view.AnalyticsDashboardData{}, err
+	}
+
+	selectedModelID := resolveSelectedModelID(r, keys, models)
+	for _, model := range models {
+		data.ModelOptions = append(data.ModelOptions, view.SelectOption{
+			Value:    model.ModelID,
+			Label:    model.ModelID,
+			Selected: model.ModelID == selectedModelID,
+		})
+	}
+
+	quarterSet := buildQuarterSet(keys, selectedModelID)
+	selectedQuarter := resolveSelectedQuarter(r, quarterSet)
+	for _, qi := range sortedQuarterIndexes(quarterSet) {
+		data.QuarterOptions = append(data.QuarterOptions, view.SelectOption{
+			Value:    strconv.Itoa(qi),
+			Label:    quarterSet[qi],
+			Selected: qi == selectedQuarter,
+		})
+	}
+
+	selectedClock := r.URL.Query().Get("clock")
+	reportOpts, reportOptsErr := parseReportOptions(r)
+	if reportOptsErr != nil {
+		log.Printf("parse report options for %s: %v", control.ControlID, reportOptsErr)
+		reportOpts = analytics.DefaultReportOptions()
+	}
+
+	if selectedModelID != "" && selectedQuarter >= 0 {
+		rawReport, err := analytics.BuildRawReport(r.Context(), db, control, selectedModelID, selectedQuarter)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return view.AnalyticsDashboardData{}, err
+		}
+		if err == nil {
+			selectedClock = resolveSelectedClock(selectedClock, rawReport)
+			for _, clockReport := range rawReport.Clocks {
+				data.ClockOptions = append(data.ClockOptions, view.SelectOption{
+					Value:    clockReport.ClockSlug,
+					Label:    clockReport.ClockLabel,
+					Selected: clockReport.ClockSlug == selectedClock,
+				})
+			}
+			derived, err := analytics.BuildDerivedReportFromRaw(rawReport, reportOpts)
+			if err != nil {
+				return view.AnalyticsDashboardData{}, err
+			}
+			selectedReport, err := derived.ClockBySlug(selectedClock)
+			if err == nil {
+				data.Analytics = buildAnalyticsViewData(derived, selectedReport)
+			}
+		}
+	}
+
+	data.ReportOptions = buildAnalyticsOptionsFormData(control.ControlID, selectedModelID, selectedQuarter, selectedClock, reportOpts, reportOptsErr)
+	return data, nil
+}
+
+// buildRawAnalyticsDashboardData assembles the raw analytics dashboard view data.
+func buildRawAnalyticsDashboardData(r *http.Request, db *sql.DB, control storage.Control, keys []storage.AggregateKey) (view.RawAnalyticsDashboardData, error) {
+	data := view.RawAnalyticsDashboardData{
+		ControlID:      control.ControlID,
+		ControlType:    string(control.ControlType),
+		NumStates:      control.NumStates,
+		SelectorAction: fmt.Sprintf("/controls/%s/analytics/raw", url.PathEscape(control.ControlID)),
+		HasAggregates:  len(keys) > 0,
+	}
+
+	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	if err != nil {
+		return view.RawAnalyticsDashboardData{}, err
+	}
+
+	selectedModelID := resolveSelectedModelID(r, keys, models)
+	for _, model := range models {
+		data.ModelOptions = append(data.ModelOptions, view.SelectOption{
+			Value:    model.ModelID,
+			Label:    model.ModelID,
+			Selected: model.ModelID == selectedModelID,
+		})
+	}
+
+	quarterSet := buildQuarterSet(keys, selectedModelID)
+	selectedQuarter := resolveSelectedQuarter(r, quarterSet)
+	for _, qi := range sortedQuarterIndexes(quarterSet) {
+		data.QuarterOptions = append(data.QuarterOptions, view.SelectOption{
+			Value:    strconv.Itoa(qi),
+			Label:    quarterSet[qi],
+			Selected: qi == selectedQuarter,
+		})
+	}
+
+	selectedClock := r.URL.Query().Get("clock")
+
+	if selectedModelID != "" && selectedQuarter >= 0 {
+		rawReport, err := analytics.BuildRawReport(r.Context(), db, control, selectedModelID, selectedQuarter)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return view.RawAnalyticsDashboardData{}, err
+		}
+		if err == nil {
+			selectedClock = resolveSelectedClock(selectedClock, rawReport)
+			for _, clockReport := range rawReport.Clocks {
+				data.ClockOptions = append(data.ClockOptions, view.SelectOption{
+					Value:    clockReport.ClockSlug,
+					Label:    clockReport.ClockLabel,
+					Selected: clockReport.ClockSlug == selectedClock,
+				})
+			}
+			selectedRaw, err := rawReport.ClockBySlug(selectedClock)
+			if err == nil {
+				data.RawAnalytics = buildRawAnalyticsViewData(rawReport, selectedRaw)
+			}
+		}
+	}
+
+	return data, nil
+}
+
+// resolveSelectedModelID picks the model to display based on request params, data availability, and fallbacks.
+func resolveSelectedModelID(r *http.Request, keys []storage.AggregateKey, models []storage.Model) string {
 	selectedModelID := ""
-	// Page selection prefers an explicit query parameter, then a model with data,
-	// then any known model so the page lands on the most useful analytics slice.
 	if requestedModelID := r.URL.Query().Get("model"); requestedModelID != "" {
-		for _, model := range data.Models {
+		for _, model := range models {
 			if model.ModelID == requestedModelID {
 				selectedModelID = requestedModelID
 				break
 			}
 		}
 	}
-	if selectedModelID == "" && len(data.Models) > 0 {
+	if selectedModelID == "" && len(models) > 0 {
 		keyedModels := make(map[string]struct{}, len(keys))
 		for _, key := range keys {
 			keyedModels[key.ModelID] = struct{}{}
 		}
-		for _, model := range data.Models {
+		for _, model := range models {
 			if _, ok := keyedModels[model.ModelID]; ok {
 				selectedModelID = model.ModelID
 				break
 			}
 		}
 	}
-	if selectedModelID == "" && len(data.Models) > 0 {
-		selectedModelID = data.Models[0].ModelID
+	if selectedModelID == "" && len(models) > 0 {
+		selectedModelID = models[0].ModelID
 	}
 	if selectedModelID == "" && len(keys) > 0 {
 		selectedModelID = keys[0].ModelID
 	}
-	data.ModelID = selectedModelID
+	return selectedModelID
+}
 
+// buildQuarterSet returns the set of available quarter indexes for a given model.
+func buildQuarterSet(keys []storage.AggregateKey, modelID string) map[int]string {
 	quarterSet := make(map[int]string)
-	// Quarter choices are scoped to the selected model because reports are built
-	// one `(control, model, quarter)` slice at a time.
 	for _, k := range keys {
-		if k.ModelID != selectedModelID {
+		if k.ModelID != modelID {
 			continue
 		}
 		if _, ok := quarterSet[k.QuarterIndex]; !ok {
 			quarterSet[k.QuarterIndex] = quarterLabel(k.QuarterIndex)
 		}
 	}
+	return quarterSet
+}
 
+// resolveSelectedQuarter picks the quarter to display, defaulting to the latest available.
+func resolveSelectedQuarter(r *http.Request, quarterSet map[int]string) int {
 	selectedQuarter := -1
 	if qStr := r.URL.Query().Get("quarter"); qStr != "" {
 		if q, err := strconv.Atoi(qStr); err == nil {
 			selectedQuarter = q
 		}
 	}
-
-	quarterIndexes := make([]int, 0, len(quarterSet))
 	latestQuarter := -1
 	for qi := range quarterSet {
 		if qi > latestQuarter {
 			latestQuarter = qi
 		}
-		quarterIndexes = append(quarterIndexes, qi)
 	}
-	slices.Sort(quarterIndexes)
-
 	if selectedQuarter < 0 && latestQuarter >= 0 {
 		selectedQuarter = latestQuarter
 	}
@@ -373,83 +577,30 @@ func buildControlPageData(r *http.Request, db *sql.DB, control storage.Control, 
 			selectedQuarter = latestQuarter
 		}
 	}
+	return selectedQuarter
+}
 
-	quarters := make([]view.QuarterOption, 0, len(quarterIndexes))
-	for _, qi := range quarterIndexes {
-		quarters = append(quarters, view.QuarterOption{
-			QuarterIndex: qi,
-			Label:        quarterSet[qi],
-			Selected:     qi == selectedQuarter,
-			PageURL:      controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, qi, query.Get("clock"), selectedMode)),
-		})
+// sortedQuarterIndexes returns quarter indexes in ascending order.
+func sortedQuarterIndexes(quarterSet map[int]string) []int {
+	quarterIndexes := make([]int, 0, len(quarterSet))
+	for qi := range quarterSet {
+		quarterIndexes = append(quarterIndexes, qi)
 	}
-	data.Quarters = quarters
+	slices.Sort(quarterIndexes)
+	return quarterIndexes
+}
 
-	selectedClock := query.Get("clock")
-	reportOpts, reportOptsErr := parseReportOptions(r)
-	if reportOptsErr != nil {
-		log.Printf("parse report options for control %s: %v", control.ControlID, reportOptsErr)
-		reportOpts = analytics.DefaultReportOptions()
+// resolveSelectedClock picks the clock slug to display, defaulting to the first available.
+func resolveSelectedClock(selectedClock string, rawReport analytics.RawReport) string {
+	if selectedClock == "" && len(rawReport.Clocks) > 0 {
+		return rawReport.Clocks[0].ClockSlug
 	}
-	if selectedModelID != "" && selectedQuarter >= 0 {
-		rawReport, err := analytics.BuildRawReport(r.Context(), db, control, selectedModelID, selectedQuarter)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return view.ControlPageData{}, err
-		}
-		if err == nil {
-			if selectedClock == "" && len(rawReport.Clocks) > 0 {
-				selectedClock = rawReport.Clocks[0].ClockSlug
-			}
-			if selectedClock != "" {
-				if _, err := rawReport.ClockBySlug(selectedClock); err != nil && len(rawReport.Clocks) > 0 {
-					selectedClock = rawReport.Clocks[0].ClockSlug
-				}
-			}
-			for _, clockReport := range rawReport.Clocks {
-				data.ClockOptions = append(data.ClockOptions, view.ClockOption{
-					ClockSlug: clockReport.ClockSlug,
-					Label:     clockReport.ClockLabel,
-					Selected:  clockReport.ClockSlug == selectedClock,
-					PageURL:   controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, selectedQuarter, clockReport.ClockSlug, selectedMode)),
-				})
-			}
-			selectedRaw, err := rawReport.ClockBySlug(selectedClock)
-			if err == nil {
-				data.RawAnalytics = buildRawAnalyticsViewData(rawReport, selectedRaw)
-			}
-			derived, err := analytics.BuildDerivedReportFromRaw(rawReport, reportOpts)
-			if err != nil {
-				return view.ControlPageData{}, err
-			}
-			selectedReport, err := derived.ClockBySlug(selectedClock)
-			if err == nil {
-				data.Analytics = buildAnalyticsViewData(derived, selectedReport)
-			}
+	if selectedClock != "" {
+		if _, err := rawReport.ClockBySlug(selectedClock); err != nil && len(rawReport.Clocks) > 0 {
+			return rawReport.Clocks[0].ClockSlug
 		}
 	}
-	for _, model := range models {
-		data.ModelOptions = append(data.ModelOptions, view.ModelOption{
-			ModelID:  model.ModelID,
-			Selected: model.ModelID == selectedModelID,
-			PageURL:  controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, model.ModelID, selectedQuarter, selectedClock, selectedMode)),
-		})
-	}
-	for _, mode := range []struct {
-		label string
-		value string
-	}{
-		{label: "Report", value: "report"},
-		{label: "Raw", value: "raw"},
-	} {
-		data.ModeOptions = append(data.ModeOptions, view.AnalyticsModeOption{
-			Label:    mode.label,
-			Mode:     mode.value,
-			Selected: selectedMode == mode.value,
-			PageURL:  controlAnalyticsPageURL(control.ControlID, analyticsPageURLQuery(query, selectedModelID, selectedQuarter, selectedClock, mode.value)),
-		})
-	}
-	data.ReportOptions = buildAnalyticsOptionsFormData(control.ControlID, selectedModelID, selectedQuarter, selectedClock, selectedMode, reportOpts, reportOptsErr)
-	return data, nil
+	return selectedClock
 }
 
 // defaultModelForm returns the empty model form shown on a control page.
@@ -460,7 +611,7 @@ func defaultModelForm(controlID string) view.ModelFormData {
 }
 
 // applyModelRowError injects a model form error back into the matching control-page row.
-func applyModelRowError(data *view.ControlPageData, previousModelID string, form view.ModelFormData, errMsg string) {
+func applyModelRowError(data *view.ControlConfigData, previousModelID string, form view.ModelFormData, errMsg string) {
 	for i := range data.Models {
 		if data.Models[i].ModelID != previousModelID {
 			continue
@@ -471,47 +622,13 @@ func applyModelRowError(data *view.ControlPageData, previousModelID string, form
 	}
 }
 
-// controlPageURL builds a control-page URL while preserving the selected model when present.
+// controlPageURL builds a control config page URL while preserving the selected model when present.
 func controlPageURL(escapedControlID, modelID string) string {
 	pageURL := fmt.Sprintf("/controls/%s", escapedControlID)
 	if modelID == "" {
 		return pageURL
 	}
 	return fmt.Sprintf("%s?model=%s", pageURL, url.QueryEscape(modelID))
-}
-
-// controlAnalyticsPageURL builds the analytics-selector URL for one control page state.
-func controlAnalyticsPageURL(controlID string, values url.Values) string {
-	path := fmt.Sprintf("/controls/%s", url.PathEscape(controlID))
-	if len(values) == 0 {
-		return path
-	}
-	return path + "?" + values.Encode()
-}
-
-func analyticsPageURLQuery(base url.Values, modelID string, quarter int, clock, mode string) url.Values {
-	values := cloneQueryValues(base)
-	if modelID != "" {
-		values.Set("model", modelID)
-	} else {
-		values.Del("model")
-	}
-	if quarter >= 0 {
-		values.Set("quarter", strconv.Itoa(quarter))
-	} else {
-		values.Del("quarter")
-	}
-	if clock != "" {
-		values.Set("clock", clock)
-	} else {
-		values.Del("clock")
-	}
-	if mode != "" && mode != "report" {
-		values.Set("mode", mode)
-	} else {
-		values.Del("mode")
-	}
-	return values
 }
 
 func cloneQueryValues(values url.Values) url.Values {
@@ -522,11 +639,10 @@ func cloneQueryValues(values url.Values) url.Values {
 	return cloned
 }
 
-func buildAnalyticsOptionsFormData(controlID, modelID string, quarter int, clock, mode string, opts analytics.ReportOptions, parseErr error) view.AnalyticsOptionsFormData {
+func buildAnalyticsOptionsFormData(controlID, modelID string, quarter int, clock string, opts analytics.ReportOptions, parseErr error) view.AnalyticsOptionsFormData {
 	data := view.AnalyticsOptionsFormData{
-		Action:                 fmt.Sprintf("/controls/%s", url.PathEscape(controlID)),
+		Action:                 fmt.Sprintf("/controls/%s/analytics", url.PathEscape(controlID)),
 		ModelID:                modelID,
-		Mode:                   mode,
 		Smoothing:              opts.SmoothingKind,
 		HoldingDampingMillis:   formatFloatParam(opts.HoldingDampingMillis),
 		TransitionDampingCount: formatFloatParam(opts.TransitionDampingCount),

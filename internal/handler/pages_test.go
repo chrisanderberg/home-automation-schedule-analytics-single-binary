@@ -64,7 +64,7 @@ func TestHomePageEscapesControlLinks(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), `/controls/mode%2Fscene`) {
+	if !strings.Contains(w.Body.String(), `/controls/mode%2Fscene/analytics`) {
 		t.Fatalf("expected escaped control link, got body %q", w.Body.String())
 	}
 }
@@ -140,10 +140,10 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/mode", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode/analytics", nil)
 	req.SetPathValue("controlID", "mode")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -158,8 +158,8 @@ func TestControlPageSelectsLatestQuarterAndOrdersOptions(t *testing.T) {
 	if !(pos10 < pos11 && pos11 < pos12) {
 		t.Fatalf("expected sorted quarter options, got body %q", body)
 	}
-	if !strings.Contains(body, `class="selector-pill selected"`) || !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=default&amp;quarter=12"`) {
-		t.Fatalf("expected latest quarter link to be selected")
+	if !strings.Contains(body, `<option value="12" selected>1973 Q1</option>`) {
+		t.Fatalf("expected latest quarter selected in dropdown, got body %q", body)
 	}
 }
 
@@ -183,16 +183,16 @@ func TestControlPageEscapesQuarterRequests(t *testing.T) {
 		t.Fatalf("seed aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/mode%2Fscene", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode%2Fscene/analytics", nil)
 	req.SetPathValue("controlID", "mode/scene")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), `href="/controls/mode%2Fscene?clock=utc&amp;model=default&amp;quarter=12"`) {
-		t.Fatalf("expected escaped quarter link, got body %q", w.Body.String())
+	if !strings.Contains(w.Body.String(), `action="/controls/mode%2Fscene/analytics"`) {
+		t.Fatalf("expected escaped analytics action URL, got body %q", w.Body.String())
 	}
 }
 
@@ -226,25 +226,22 @@ func TestControlPageSelectsRequestedModel(t *testing.T) {
 		t.Fatalf("seed weekend aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/mode?model=weekend", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode/analytics?model=weekend", nil)
 	req.SetPathValue("controlID", "mode")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "Analytics View") || !strings.Contains(body, ">weekend<") {
-		t.Fatalf("expected analytics model selector in body, got %q", body)
+	if !strings.Contains(body, `<option value="weekend" selected>weekend</option>`) {
+		t.Fatalf("expected weekend selected in model dropdown, got %q", body)
 	}
 	if strings.Contains(body, "1972 Q3") {
-		t.Fatalf("expected quarter buttons only for selected model, got %q", body)
+		t.Fatalf("expected quarter options only for selected model, got %q", body)
 	}
-	if !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=weekend&amp;quarter=12"`) {
-		t.Fatalf("expected weekend analytics link, got %q", body)
-	}
-	if !strings.Contains(body, "Inferred preference") {
+	if !strings.Contains(body, "inferred preference") {
 		t.Fatalf("expected inferred preference report content, got %q", body)
 	}
 }
@@ -272,16 +269,16 @@ func TestControlPageDefaultsToModelWithData(t *testing.T) {
 		t.Fatalf("seed aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/mode", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/mode/analytics", nil)
 	req.SetPathValue("controlID", "mode")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, `href="/controls/mode?clock=utc&amp;model=weekend&amp;quarter=12"`) {
+	if !strings.Contains(body, `<option value="weekend" selected>weekend</option>`) {
 		t.Fatalf("expected model with data to be selected, got %q", body)
 	}
 }
@@ -299,10 +296,10 @@ func TestControlPageRendersSeededDemoReport(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene/analytics?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
@@ -332,10 +329,10 @@ func TestControlPageCanRenderRawAnalytics(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&mode=raw", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene/analytics/raw?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleRawAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
@@ -362,10 +359,10 @@ func TestControlPageShowsReportParameterControls(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw&include=rates", nil)
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene/analytics?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw&include=rates", nil)
 	req.SetPathValue("controlID", "living-room-scene")
 	w := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(w, req)
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
@@ -416,10 +413,10 @@ func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
 		t.Fatalf("marshal expected series: %v", err)
 	}
 
-	pageReq := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&mode=raw", nil)
+	pageReq := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene/analytics/raw?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	pageReq.SetPathValue("controlID", "living-room-scene")
 	pageW := httptest.NewRecorder()
-	HandleControlPage(db).ServeHTTP(pageW, pageReq)
+	HandleRawAnalyticsPage(db).ServeHTTP(pageW, pageReq)
 	if pageW.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", pageW.Code, pageW.Body.String())
 	}

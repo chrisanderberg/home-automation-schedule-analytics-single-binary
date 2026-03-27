@@ -1,49 +1,20 @@
 package view
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
-// QuarterOption describes one quarter selector choice on the control page.
-type QuarterOption struct {
-	QuarterIndex int
-	Label        string
-	Selected     bool
-	PageURL      string
-}
-
-// ClockOption describes one clock selector choice on the control page.
-type ClockOption struct {
-	ClockSlug string
-	Label     string
-	Selected  bool
-	PageURL   string
-}
-
-// ControlPageData contains all data needed to render one existing control page.
-type ControlPageData struct {
+// ControlConfigData contains everything needed to render the control configuration page.
+type ControlConfigData struct {
 	ControlID     string
 	ControlType   string
 	NumStates     int
 	StateLabels   []string
-	ModelID       string
-	ModelOptions  []ModelOption
-	ModeOptions   []AnalyticsModeOption
 	Models        []ModelRowData
 	ModelForm     ModelFormData
-	Quarters      []QuarterOption
-	ClockOptions  []ClockOption
-	AnalyticsMode string
-	ReportOptions AnalyticsOptionsFormData
-	Analytics     AnalyticsViewData
-	RawAnalytics  RawAnalyticsViewData
 	FormData      ControlFormPageData
 	HasAggregates bool
-}
-
-// ModelOption describes one model selector choice on the control page.
-type ModelOption struct {
-	ModelID  string
-	Selected bool
-	PageURL  string
 }
 
 // ModelRowData contains one editable model row on the control page.
@@ -59,14 +30,6 @@ type ModelFormData struct {
 	Action  string
 	ModelID string
 	Error   string
-}
-
-// AnalyticsModeOption describes one analytics mode selector choice.
-type AnalyticsModeOption struct {
-	Label    string
-	Mode     string
-	Selected bool
-	PageURL  string
 }
 
 // AnalyticsOptionsFormData carries the URL-backed report-parameter controls.
@@ -155,165 +118,9 @@ type ChartLegendItem struct {
 	Color string
 }
 
-// selectorPillClass returns the CSS class for selector pill buttons.
-func selectorPillClass(selected bool) string {
-	if selected {
-		return "selector-pill selected"
-	}
-	return "selector-pill"
-}
-
-// AnalyticsPanel renders the selected analytics slice on the control page.
-templ AnalyticsPanel(data AnalyticsViewData) {
-	if data.HasData {
-		<div class="report-header">
-			<h3>Report</h3>
-			<p class="page-subtitle">Per-model diagnostics and inferred preference for { data.ClockLabel } in { data.QuarterLabel }.</p>
-		</div>
-		<div class="diagnostics-grid">
-			<div class="metric-card">
-				<div class="metric-label">Total holding time</div>
-				<div class="metric-value metric-value-mono">{ data.Diagnostics.TotalHolding }</div>
-			</div>
-			<div class="metric-card">
-				<div class="metric-label">User transitions</div>
-				<div class="metric-value metric-value-mono">{ data.Diagnostics.TransitionCount }</div>
-			</div>
-			<div class="metric-card">
-				<div class="metric-label">Fallback buckets</div>
-				<div class="metric-value">{ fmt.Sprintf("%d", data.Diagnostics.FallbackBuckets) }</div>
-			</div>
-		</div>
-		<div class="summary-table-wrapper form-card">
-			<table class="analytics-table">
-				<thead>
-					<tr>
-						<th>State</th>
-						<th>Mean actual occupancy</th>
-						<th>Mean inferred preference</th>
-					</tr>
-				</thead>
-				<tbody>
-					for _, state := range data.States {
-						<tr>
-							<td>{ state.Label }</td>
-							<td>{ state.OccupancyMean }</td>
-							<td>{ state.PreferenceMean }</td>
-						</tr>
-					}
-				</tbody>
-			</table>
-		</div>
-		if len(data.ChartLegendItems) > 0 {
-			<div class="chart-legend">
-				for _, item := range data.ChartLegendItems {
-					<div class="legend-item">
-						<span class="legend-swatch" style={ "background:" + item.Color }></span>
-						<span>{ item.Label }</span>
-					</div>
-				}
-			</div>
-		}
-		<div class="analytics-grid analytics-grid-primary">
-			<div class="analytics-card analytics-card-wide">
-				<h4 class="chart-heading">Actual Occupancy</h4>
-				<p class="chart-label">Stacked weekly distribution across all 2016 buckets</p>
-				@ChartCanvas(data.OccupancyChart)
-			</div>
-			<div class="analytics-card analytics-card-wide">
-				<h4 class="chart-heading">Inferred Preference</h4>
-				<p class="chart-label">Stacked weekly stationary distribution — CTMC stationary share by state</p>
-				@ChartCanvas(data.PreferenceChart)
-			</div>
-		</div>
-		<div class="analytics-grid">
-			for _, state := range data.States {
-				<div class="analytics-card">
-					<div class="card-meta">
-						<span class="badge badge-state">{ state.Label }</span>
-						<span>Mean weekly share</span>
-					</div>
-					<p class="chart-label">Occupancy: { state.OccupancyMean }</p>
-					<p class="chart-label">Preference: { state.PreferenceMean }</p>
-				</div>
-			}
-		</div>
-	} else {
-		<p class="empty">No analytics data available for this model and quarter.</p>
-	}
-}
-
-// RawAnalyticsPanel renders the selected raw analytics slice on the control page.
-templ RawAnalyticsPanel(data RawAnalyticsViewData) {
-	if data.HasData {
-		<div class="report-header">
-			<h3>Raw Analytics</h3>
-			<p class="page-subtitle">Stored per-bucket holdings and transitions for { data.ClockLabel } in { data.QuarterLabel }.</p>
-		</div>
-		<div class="diagnostics-grid">
-			<div class="metric-card">
-				<div class="metric-label">Total holding time</div>
-				<div class="metric-value metric-value-mono">{ data.TotalHolding }</div>
-			</div>
-			<div class="metric-card">
-				<div class="metric-label">User transitions</div>
-				<div class="metric-value metric-value-mono">{ data.TransitionCount }</div>
-			</div>
-		</div>
-		<div class="analytics-grid analytics-grid-primary">
-			<div class="analytics-card analytics-card-wide">
-				<h4 class="chart-heading">Total Holding Time</h4>
-				<p class="chart-label">Summed across states on one 2016-bucket weekly axis</p>
-				@ChartCanvas(data.TotalHoldingChart)
-			</div>
-			<div class="analytics-card analytics-card-wide">
-				<h4 class="chart-heading">Total Transitions</h4>
-				<p class="chart-label">Summed across transition pairs on the same weekly axis</p>
-				@ChartCanvas(data.TotalTransitionChart)
-			</div>
-		</div>
-		<div class="analytics-grid">
-			for _, state := range data.HoldingStates {
-				<div class="analytics-card">
-					<div class="card-meta">
-						<span class="badge badge-state">{ state.Label }</span>
-						<span>{ state.TotalHolding }</span>
-					</div>
-					<p class="chart-label">Raw holding time</p>
-					@ChartCanvas(state.HoldingChart)
-				</div>
-			}
-			for _, transition := range data.TransitionSeries {
-				<div class="analytics-card">
-					<div class="card-meta">
-						<span class="badge badge-state">{ transition.Label }</span>
-						<span>{ transition.TransitionTotal }</span>
-					</div>
-					<p class="chart-label">Raw transition counts</p>
-					@ChartCanvas(transition.TransitionChart)
-				</div>
-			}
-		</div>
-	} else {
-		<p class="empty">No analytics data available for this model and quarter.</p>
-	}
-}
-
-// ControlPage renders the detail view for one control and its analytics report.
-templ ControlPage(data ControlPageData) {
-	@Layout(data.ControlID, "/controls") {
-		<div class="control-header">
-			<div class="page-header">
-				<div>
-					<h1>{ data.ControlID }</h1>
-					<p class="page-subtitle">Edit configuration and review aggregate data on one page.</p>
-				</div>
-			</div>
-			<div class="card-meta">
-				<span class="badge badge-type">{ data.ControlType }</span>
-				<span>{ fmt.Sprintf("%d states", data.NumStates) }</span>
-			</div>
-		</div>
+// ControlPage renders the configuration view for one control (form + models).
+templ ControlPage(data ControlConfigData) {
+	@ControlLayout(data.ControlID, data.ControlID, data.ControlType, data.NumStates, "config") {
 		@ControlForm(data.FormData)
 		<hr class="section-divider"/>
 		<div class="models-section">
@@ -354,132 +161,16 @@ templ ControlPage(data ControlPageData) {
 				<button type="submit" class="btn">Add model</button>
 			</form>
 		</div>
-		if len(data.ModelOptions) > 0 || len(data.Quarters) > 0 || len(data.ClockOptions) > 0 || len(data.ModeOptions) > 0 {
-			<hr class="section-divider"/>
-			<div class="page-header">
-				<div>
-					<h2>Analytics View</h2>
-					<p class="page-subtitle">Choose the model, quarter, clock, and analytics mode to inspect.</p>
+		if data.HasAggregates {
+			<a href={ templ.SafeURL(fmt.Sprintf("/controls/%s/analytics", url.PathEscape(data.ControlID))) } class="analytics-cta">
+				<div class="analytics-cta-text">
+					<h3>View Analytics</h3>
+					<p>Explore occupancy and inferred preference reports for this control.</p>
 				</div>
-			</div>
-			if len(data.ModelOptions) > 0 {
-				<div class="selector-group">
-					<span class="selector-label">Model</span>
-					<div class="selector-row">
-						for _, model := range data.ModelOptions {
-							<a href={ templ.SafeURL(model.PageURL) } class={ selectorPillClass(model.Selected) }>{ model.ModelID }</a>
-						}
-					</div>
-				</div>
-			}
-			if len(data.Quarters) > 0 {
-				<div class="selector-group">
-					<span class="selector-label">Quarter</span>
-					<div class="selector-row">
-						for _, q := range data.Quarters {
-							<a href={ templ.SafeURL(q.PageURL) } class={ selectorPillClass(q.Selected) }>{ q.Label }</a>
-						}
-					</div>
-				</div>
-			}
-			if len(data.ClockOptions) > 0 {
-				<div class="selector-group">
-					<span class="selector-label">Clock</span>
-					<div class="selector-row">
-						for _, clock := range data.ClockOptions {
-							<a href={ templ.SafeURL(clock.PageURL) } class={ selectorPillClass(clock.Selected) }>{ clock.Label }</a>
-						}
-					</div>
-				</div>
-			}
-			if len(data.ModeOptions) > 0 {
-				<div class="selector-group">
-					<span class="selector-label">Analytics Mode</span>
-					<div class="selector-row">
-						for _, mode := range data.ModeOptions {
-							<a href={ templ.SafeURL(mode.PageURL) } class={ selectorPillClass(mode.Selected) }>{ mode.Label }</a>
-						}
-					</div>
-				</div>
-			}
+				<span class="analytics-cta-arrow">→</span>
+			</a>
 		}
-		if data.AnalyticsMode == "report" && data.HasAggregates {
-			<form method="get" action={ templ.SafeURL(data.ReportOptions.Action) } class="form-card analytics-options-form">
-				<input type="hidden" name="model" value={ data.ReportOptions.ModelID }/>
-				<input type="hidden" name="quarter" value={ data.ReportOptions.Quarter }/>
-				<input type="hidden" name="clock" value={ data.ReportOptions.Clock }/>
-				<input type="hidden" name="mode" value={ data.ReportOptions.Mode }/>
-				<div class="page-header">
-					<div>
-						<h3>Report Parameters</h3>
-						<p class="page-subtitle">These controls map to the derived analytics API options.</p>
-					</div>
-				</div>
-				if data.ReportOptions.Error != "" {
-					<div class="form-errors">
-						<p>{ data.ReportOptions.Error }</p>
-					</div>
-				}
-				<div class="form-grid">
-					<label class="form-field">
-						<span>Smoothing</span>
-						<select name="smoothing">
-							<option value="gaussian" selected?={ data.ReportOptions.Smoothing == "gaussian" }>gaussian</option>
-							<option value="none" selected?={ data.ReportOptions.Smoothing == "none" }>none</option>
-						</select>
-					</label>
-					<label class="form-field">
-						<span>Kernel radius</span>
-						<input type="number" min="0" name="kernelRadius" value={ data.ReportOptions.KernelRadius } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
-					</label>
-					<label class="form-field">
-						<span>Kernel sigma</span>
-						<input type="number" min="0" step="0.1" name="kernelSigma" value={ data.ReportOptions.KernelSigma } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
-					</label>
-					<label class="form-field">
-						<span>Holding damping millis</span>
-						<input type="number" min="0" step="any" inputmode="decimal" name="holdingDampingMillis" value={ data.ReportOptions.HoldingDampingMillis }/>
-					</label>
-					<label class="form-field">
-						<span>Transition damping count</span>
-						<input type="number" min="0" step="any" inputmode="decimal" name="transitionDampingCount" value={ data.ReportOptions.TransitionDampingCount }/>
-					</label>
-				</div>
-				<div class="state-grid analytics-checkbox-grid">
-					<label class="form-field analytics-check">
-						<span>Include raw intermediates</span>
-						<input type="checkbox" name="include" value="raw" checked?={ data.ReportOptions.IncludeRaw }/>
-					</label>
-					<label class="form-field analytics-check">
-						<span>Include smoothed intermediates</span>
-						<input type="checkbox" name="include" value="smoothed" checked?={ data.ReportOptions.IncludeSmoothed }/>
-					</label>
-					<label class="form-field analytics-check">
-						<span>Include rate intermediates</span>
-						<input type="checkbox" name="include" value="rates" checked?={ data.ReportOptions.IncludeRates }/>
-					</label>
-				</div>
-				<div class="form-actions">
-					<button type="submit" class="btn">Apply report parameters</button>
-				</div>
-			</form>
-		}
-		<hr class="section-divider"/>
-		<div id="analytics-container">
-			if data.AnalyticsMode == "raw" {
-				@RawAnalyticsPanel(data.RawAnalytics)
-			} else {
-				@AnalyticsPanel(data.Analytics)
-			}
-		</div>
 	}
-}
-
-// ChartCanvas renders one chart container consumed by the client-side chart script.
-templ ChartCanvas(chart ChartData) {
-	<div class="chart-wrapper">
-		<canvas class="weekly-chart" role="img" aria-label={ chart.Summary } data-chart-kind={ chart.Kind } data-chart-payload={ chart.Payload } data-chart-summary={ chart.Summary } width="1200" height="260"></canvas>
-	</div>
 }
 
 // modelRowValue returns the model identifier to show in a row's input field.
