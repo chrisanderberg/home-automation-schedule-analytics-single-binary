@@ -1,0 +1,119 @@
+package view
+
+// RawAnalyticsDashboardData contains everything needed to render the raw data explorer.
+type RawAnalyticsDashboardData struct {
+	ControlID      string
+	ControlType    string
+	NumStates      int
+	ModelOptions   []SelectOption
+	QuarterOptions []SelectOption
+	ClockOptions   []SelectOption
+	SelectorAction string
+	HasAggregates  bool
+	RawAnalytics   RawAnalyticsViewData
+}
+
+// RawAnalyticsDashboardPage renders the raw data explorer for one control.
+templ RawAnalyticsDashboardPage(data RawAnalyticsDashboardData) {
+	@ControlLayout(data.ControlID, data.ControlID, data.ControlType, data.NumStates, "raw") {
+		if !data.HasAggregates {
+			<div class="empty-analytics">
+				<p class="empty-analytics-title">No raw data yet</p>
+				<p class="empty-analytics-body">Start sending holding intervals and transitions to explore raw bucket data here.</p>
+			</div>
+		} else {
+			<form method="get" action={ templ.SafeURL(data.SelectorAction) } class="selector-bar" id="selector-form">
+				if len(data.ModelOptions) > 0 {
+					<div class="selector-field">
+						<label for="raw-sel-model">Model</label>
+						<select id="raw-sel-model" name="model" class="selector-select">
+							for _, opt := range data.ModelOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				if len(data.QuarterOptions) > 0 {
+					<div class="selector-field">
+						<label for="raw-sel-quarter">Quarter</label>
+						<select id="raw-sel-quarter" name="quarter" class="selector-select">
+							for _, opt := range data.QuarterOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				if len(data.ClockOptions) > 0 {
+					<div class="selector-field">
+						<label for="raw-sel-clock">Clock</label>
+						<select id="raw-sel-clock" name="clock" class="selector-select">
+							for _, opt := range data.ClockOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				<div class="form-actions">
+					<button type="submit" class="btn btn-secondary">Update raw view</button>
+				</div>
+			</form>
+			@RawAnalyticsPanel(data.RawAnalytics)
+		}
+	}
+}
+
+// RawAnalyticsPanel renders the raw holding and transition charts.
+templ RawAnalyticsPanel(data RawAnalyticsViewData) {
+	if data.HasData {
+		<div class="report-header">
+			<h3>Raw Analytics</h3>
+			<p class="page-subtitle">Stored per-bucket holdings and transitions for { data.ClockLabel } in { data.QuarterLabel }.</p>
+		</div>
+		<div class="diagnostics-grid">
+			<div class="metric-card">
+				<div class="metric-label">Total holding time</div>
+				<div class="metric-value metric-value-mono">{ data.TotalHolding }</div>
+			</div>
+			<div class="metric-card">
+				<div class="metric-label">User transitions</div>
+				<div class="metric-value metric-value-mono">{ data.TransitionCount }</div>
+			</div>
+		</div>
+		<div class="analytics-grid analytics-grid-primary">
+			<div class="analytics-card analytics-card-wide">
+				<h4 class="chart-heading">Total Holding Time</h4>
+				<p class="chart-label">Summed across states on one 2016-bucket weekly axis</p>
+				@ChartCanvas(data.TotalHoldingChart)
+			</div>
+			<div class="analytics-card analytics-card-wide">
+				<h4 class="chart-heading">Total Transitions</h4>
+				<p class="chart-label">Summed across transition pairs on the same weekly axis</p>
+				@ChartCanvas(data.TotalTransitionChart)
+			</div>
+		</div>
+		<div class="analytics-grid">
+			for _, state := range data.HoldingStates {
+				<div class="analytics-card">
+					<div class="card-meta">
+						<span class="badge badge-state">{ state.Label }</span>
+						<span>{ state.TotalHolding }</span>
+					</div>
+					<p class="chart-label">Raw holding time</p>
+					@ChartCanvas(state.HoldingChart)
+				</div>
+			}
+			for _, transition := range data.TransitionSeries {
+				<div class="analytics-card">
+					<div class="card-meta">
+						<span class="badge badge-state">{ transition.Label }</span>
+						<span>{ transition.TransitionTotal }</span>
+					</div>
+					<p class="chart-label">Raw transition counts</p>
+					@ChartCanvas(transition.TransitionChart)
+				</div>
+			}
+		</div>
+	} else {
+		<p class="empty">No analytics data available for this model and quarter.</p>
+	}
+}

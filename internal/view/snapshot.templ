@@ -19,8 +19,13 @@ func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
 
 // SnapshotPage renders the snapshot listing and export action.
 templ SnapshotPage(snapshots []SnapshotEntry) {
-	@Layout("Snapshots") {
-		<h1>Snapshots</h1>
+	@Layout("Snapshots", "/snapshots") {
+		<div class="page-header">
+			<div>
+				<h1>Snapshots</h1>
+				<p class="page-subtitle">Export a point-in-time copy of the database.</p>
+			</div>
+		</div>
 		<div class="snapshot-actions">
 			<button
 				class="btn"
@@ -35,31 +40,33 @@ templ SnapshotPage(snapshots []SnapshotEntry) {
 		</div>
 		<div id="snapshot-list">
 			if len(snapshots) == 0 {
-				<p class="empty">No snapshots yet.</p>
+				<p class="empty">No snapshots yet. Click Export Snapshot to create one.</p>
 			} else {
-				<table class="snapshot-table">
-					<thead>
-						<tr>
-							<th>File</th>
-							<th>Size</th>
-							<th>Created</th>
-						</tr>
-					</thead>
-					<tbody>
-						for _, s := range displaySnapshots(snapshots) {
+				<div class="form-card">
+					<table class="snapshot-table">
+						<thead>
 							<tr>
-								<td>{ s.Name }</td>
-								<td>{ s.Size }</td>
-								<td>{ s.ModTime }</td>
+								<th>File</th>
+								<th>Size</th>
+								<th>Created</th>
 							</tr>
-						}
-						if len(snapshots) > 50 {
-							<tr>
-								<td colspan="3">{ fmt.Sprintf("... and %d more", len(snapshots)-50) }</td>
-							</tr>
-						}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							for _, s := range displaySnapshots(snapshots) {
+								<tr>
+									<td>{ s.Name }</td>
+									<td>{ s.Size }</td>
+									<td>{ s.ModTime }</td>
+								</tr>
+							}
+							if len(snapshots) > 50 {
+								<tr>
+									<td colspan="3">{ fmt.Sprintf("... and %d more", len(snapshots)-50) }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
 			}
 		</div>
 	}

@@ -1,0 +1,242 @@
+package view
+
+import "fmt"
+
+// SelectOption represents a single option in a dropdown selector.
+type SelectOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+// AnalyticsDashboardData contains everything needed to render the analytics dashboard.
+type AnalyticsDashboardData struct {
+	ControlID      string
+	ControlType    string
+	NumStates      int
+	ModelOptions   []SelectOption
+	QuarterOptions []SelectOption
+	ClockOptions   []SelectOption
+	SelectorAction string
+	ReportOptions  AnalyticsOptionsFormData
+	HasAggregates  bool
+	Analytics      AnalyticsViewData
+}
+
+// AnalyticsDashboardPage renders the analytics dashboard for one control.
+templ AnalyticsDashboardPage(data AnalyticsDashboardData) {
+	@ControlLayout(data.ControlID, data.ControlID, data.ControlType, data.NumStates, "analytics") {
+		if !data.HasAggregates {
+			<div class="empty-analytics">
+				<p class="empty-analytics-title">No analytics data yet</p>
+				<p class="empty-analytics-body">Start sending holding intervals and transitions to see reports here.</p>
+			</div>
+		} else {
+			<form method="get" action={ templ.SafeURL(data.SelectorAction) } class="selector-bar" id="selector-form">
+				@AnalyticsReportParamHiddenInputs(data.ReportOptions)
+				if len(data.ModelOptions) > 0 {
+					<div class="selector-field">
+						<label for="sel-model">Model</label>
+						<select id="sel-model" name="model" class="selector-select">
+							for _, opt := range data.ModelOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				if len(data.QuarterOptions) > 0 {
+					<div class="selector-field">
+						<label for="sel-quarter">Quarter</label>
+						<select id="sel-quarter" name="quarter" class="selector-select">
+							for _, opt := range data.QuarterOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				if len(data.ClockOptions) > 0 {
+					<div class="selector-field">
+						<label for="sel-clock">Clock</label>
+						<select id="sel-clock" name="clock" class="selector-select">
+							for _, opt := range data.ClockOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+					</div>
+				}
+				<div class="form-actions">
+					<button type="submit" class="btn btn-secondary">Update report</button>
+				</div>
+			</form>
+			if data.ReportOptions.Error != "" {
+				<div class="form-errors">
+					<p>{ data.ReportOptions.Error }</p>
+				</div>
+			}
+			<details class="report-params-panel" open?={ data.ReportOptions.Error != "" }>
+				<summary>Report Parameters</summary>
+				<div class="form-card">
+					<form method="get" action={ templ.SafeURL(data.ReportOptions.Action) } class="analytics-options-form">
+						<input type="hidden" name="model" value={ data.ReportOptions.ModelID }/>
+						<input type="hidden" name="quarter" value={ data.ReportOptions.Quarter }/>
+						<input type="hidden" name="clock" value={ data.ReportOptions.Clock }/>
+						<div class="form-grid">
+							<label class="form-field">
+								<span>Smoothing</span>
+								<select name="smoothing">
+									<option value="gaussian" selected?={ data.ReportOptions.Smoothing == "gaussian" }>gaussian</option>
+									<option value="none" selected?={ data.ReportOptions.Smoothing == "none" }>none</option>
+								</select>
+							</label>
+							<label class="form-field">
+								<span>Kernel radius</span>
+								<input type="number" min="0" name="kernelRadius" value={ data.ReportOptions.KernelRadius } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
+							</label>
+							<label class="form-field">
+								<span>Kernel sigma</span>
+								<input type="number" min="0" step="0.1" name="kernelSigma" value={ data.ReportOptions.KernelSigma } disabled?={ data.ReportOptions.Smoothing != "gaussian" }/>
+							</label>
+							<label class="form-field">
+								<span>Holding damping millis</span>
+								<input type="number" min="0" step="any" inputmode="decimal" name="holdingDampingMillis" value={ data.ReportOptions.HoldingDampingMillis }/>
+							</label>
+							<label class="form-field">
+								<span>Transition damping count</span>
+								<input type="number" min="0" step="any" inputmode="decimal" name="transitionDampingCount" value={ data.ReportOptions.TransitionDampingCount }/>
+							</label>
+						</div>
+						<div class="state-grid analytics-checkbox-grid">
+							<label class="form-field analytics-check">
+								<span>Include raw intermediates</span>
+								<input type="checkbox" name="include" value="raw" checked?={ data.ReportOptions.IncludeRaw }/>
+							</label>
+							<label class="form-field analytics-check">
+								<span>Include smoothed intermediates</span>
+								<input type="checkbox" name="include" value="smoothed" checked?={ data.ReportOptions.IncludeSmoothed }/>
+							</label>
+							<label class="form-field analytics-check">
+								<span>Include rate intermediates</span>
+								<input type="checkbox" name="include" value="rates" checked?={ data.ReportOptions.IncludeRates }/>
+							</label>
+						</div>
+						<div class="form-actions">
+							<button type="submit" class="btn">Apply report parameters</button>
+						</div>
+					</form>
+				</div>
+			</details>
+			@AnalyticsPanel(data.Analytics)
+		}
+	}
+}
+
+templ AnalyticsReportParamHiddenInputs(data AnalyticsOptionsFormData) {
+	if data.Smoothing != "" {
+		<input type="hidden" name="smoothing" value={ data.Smoothing }/>
+	}
+	if data.KernelRadius != "" {
+		<input type="hidden" name="kernelRadius" value={ data.KernelRadius }/>
+	}
+	if data.KernelSigma != "" {
+		<input type="hidden" name="kernelSigma" value={ data.KernelSigma }/>
+	}
+	if data.HoldingDampingMillis != "" {
+		<input type="hidden" name="holdingDampingMillis" value={ data.HoldingDampingMillis }/>
+	}
+	if data.TransitionDampingCount != "" {
+		<input type="hidden" name="transitionDampingCount" value={ data.TransitionDampingCount }/>
+	}
+	if data.IncludeRaw {
+		<input type="hidden" name="include" value="raw"/>
+	}
+	if data.IncludeSmoothed {
+		<input type="hidden" name="include" value="smoothed"/>
+	}
+	if data.IncludeRates {
+		<input type="hidden" name="include" value="rates"/>
+	}
+}
+
+// AnalyticsPanel renders the diagnostics, summary table, and charts for derived analytics.
+templ AnalyticsPanel(data AnalyticsViewData) {
+	if data.HasData {
+		<div class="report-header">
+			<h3>Report</h3>
+			<p class="page-subtitle">Per-model diagnostics and inferred preference for { data.ClockLabel } in { data.QuarterLabel }.</p>
+		</div>
+		<div class="diagnostics-grid">
+			<div class="metric-card">
+				<div class="metric-label">Total holding time</div>
+				<div class="metric-value metric-value-mono">{ data.Diagnostics.TotalHolding }</div>
+			</div>
+			<div class="metric-card">
+				<div class="metric-label">User transitions</div>
+				<div class="metric-value metric-value-mono">{ data.Diagnostics.TransitionCount }</div>
+			</div>
+			<div class="metric-card">
+				<div class="metric-label">Fallback buckets</div>
+				<div class="metric-value">{ fmt.Sprintf("%d", data.Diagnostics.FallbackBuckets) }</div>
+			</div>
+		</div>
+		<div class="summary-table-wrapper form-card">
+			<table class="analytics-table">
+				<thead>
+					<tr>
+						<th>State</th>
+						<th>Mean actual occupancy</th>
+						<th>Mean inferred preference</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, state := range data.States {
+						<tr>
+							<td>{ state.Label }</td>
+							<td>{ state.OccupancyMean }</td>
+							<td>{ state.PreferenceMean }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if len(data.ChartLegendItems) > 0 {
+			<div class="chart-legend">
+				for _, item := range data.ChartLegendItems {
+					<div class="legend-item">
+						<span class="legend-swatch" style={ "background:" + item.Color }></span>
+						<span>{ item.Label }</span>
+					</div>
+				}
+			</div>
+		}
+		<div class="analytics-grid analytics-grid-primary">
+			<div class="analytics-card analytics-card-wide">
+				<h4 class="chart-heading">Actual Occupancy</h4>
+				<p class="chart-label">Stacked weekly distribution across all 2016 buckets</p>
+				@ChartCanvas(data.OccupancyChart)
+			</div>
+			<div class="analytics-card analytics-card-wide">
+				<h4 class="chart-heading">Inferred Preference</h4>
+				<p class="chart-label">Stacked weekly stationary distribution — CTMC stationary share by state</p>
+				@ChartCanvas(data.PreferenceChart)
+			</div>
+		</div>
+	} else {
+		<p class="empty">No analytics data available for this model and quarter.</p>
+	}
+}
+
+// ChartCanvas renders one chart container consumed by the client-side chart script.
+templ ChartCanvas(chart ChartData) {
+	<div class="chart-wrapper">
+		<canvas
+			class="weekly-chart"
+			role="img"
+			aria-label={ chart.Summary }
+			data-chart-kind={ chart.Kind }
+			data-chart-payload={ chart.Payload }
+			data-chart-summary={ chart.Summary }
+			width="1200"
+			height="260"
+		></canvas>
+	</div>
+}

@@ -1,0 +1,45 @@
+package view
+
+import (
+	"fmt"
+	"net/url"
+)
+
+// controlTabClass returns the CSS class for a subnav tab.
+func controlTabClass(activeTab, tab string) string {
+	if activeTab == tab {
+		return "active"
+	}
+	return ""
+}
+
+// ControlLayout is the shared wrapper for all /controls/{id}/* pages.
+// It provides the control header with type badge and the three-tab subnav.
+templ ControlLayout(title, controlID, controlType string, numStates int, activeTab string) {
+	@Layout(title, "/controls") {
+		<div class="control-page-header">
+			<div class="control-title-row">
+				<h1 class="control-title">{ controlID }</h1>
+				<div class="card-meta">
+					<span class="badge badge-type">{ controlType }</span>
+					<span class="text-muted">{ fmt.Sprintf("%d states", numStates) }</span>
+				</div>
+			</div>
+			<nav class="control-subnav">
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("/controls/%s", url.PathEscape(controlID))) }
+					class={ controlTabClass(activeTab, "config") }
+				>Configuration</a>
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("/controls/%s/analytics", url.PathEscape(controlID))) }
+					class={ controlTabClass(activeTab, "analytics") }
+				>Analytics</a>
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("/controls/%s/analytics/raw", url.PathEscape(controlID))) }
+					class={ controlTabClass(activeTab, "raw") }
+				>Raw Data</a>
+			</nav>
+		</div>
+		{ children... }
+	}
+}

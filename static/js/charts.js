@@ -3,10 +3,11 @@
   const BUCKETS_PER_DAY = 288;
   const TOTAL_BUCKETS = 2016;
   const PADDING = { top: 18, right: 12, bottom: 28, left: 12 };
-  const BG = "#1a1d27";
-  const GRID = "rgba(139,143,163,0.18)";
-  const TEXT = "#8b8fa3";
-  const BAR = "#63a0ff";
+  const BG_TOP = "#1c1a22";
+  const BG_BOTTOM = "#18161e";
+  const GRID = "rgba(125,120,136,0.15)";
+  const TEXT = "#7d7888";
+  const BAR = "#7b93ff";
 
   function formatValue(value, format) {
     if (format === "durationMillis") {
@@ -53,7 +54,10 @@
   }
 
   function drawFrame(ctx, width, height) {
-    ctx.fillStyle = BG;
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, BG_TOP);
+    gradient.addColorStop(1, BG_BOTTOM);
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = GRID;
     ctx.lineWidth = 1;
@@ -65,7 +69,7 @@
       ctx.stroke();
     }
     ctx.fillStyle = TEXT;
-    ctx.font = "11px system-ui, sans-serif";
+    ctx.font = "11px Inter, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     for (let day = 0; day < 7; day++) {
@@ -125,27 +129,52 @@
 
   function attachTooltip(canvas, rendered, width) {
     if (!rendered) return;
+
+    const wrapper = canvas.parentNode;
+    wrapper.style.position = "relative";
+
+    let tip = wrapper.querySelector(".chart-tooltip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "chart-tooltip";
+      tip.style.display = "none";
+      wrapper.appendChild(tip);
+    }
+
     canvas.onmousemove = function (event) {
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left - PADDING.left;
       if (x < 0 || x > width - PADDING.left - PADDING.right) {
-        canvas.title = "";
+        tip.style.display = "none";
         return;
       }
       const bucket = Math.max(0, Math.min(TOTAL_BUCKETS - 1, Math.floor((x / (width - PADDING.left - PADDING.right)) * TOTAL_BUCKETS)));
+      let text = "";
       if (rendered.type === "bars") {
         const value = rendered.payload.series[bucket] || 0;
-        canvas.title = bucketLabel(bucket) + " | " + formatValue(value, rendered.payload.valueFormat);
-        return;
+        text = bucketLabel(bucket) + " \u2014 " + formatValue(value, rendered.payload.valueFormat);
+      } else {
+        const stacks = rendered.payload.stacks || [];
+        const parts = [];
+        for (let i = 0; i < stacks.length; i++) {
+          const val = (stacks[i].values || [])[bucket] || 0;
+          if (val <= 0) continue;
+          parts.push(stacks[i].label + ": " + formatValue(val, rendered.payload.valueFormat));
+        }
+        text = bucketLabel(bucket) + (parts.length ? " \u2014 " + parts.join(", ") : "");
       }
-      const stacks = rendered.payload.stacks || [];
-      const parts = [];
-      for (let i = 0; i < stacks.length; i++) {
-        const value = (stacks[i].values || [])[bucket] || 0;
-        if (value <= 0) continue;
-        parts.push(stacks[i].label + ": " + formatValue(value, rendered.payload.valueFormat));
-      }
-      canvas.title = bucketLabel(bucket) + " | " + parts.join(", ");
+      tip.textContent = text;
+      tip.style.display = "block";
+      const tipWidth = Math.ceil(tip.getBoundingClientRect().width || tip.offsetWidth || 0);
+      const minLeft = Math.max(PADDING.left, 0);
+      const maxLeft = Math.max(minLeft, rect.width - tipWidth - 10);
+      const tipLeft = Math.max(minLeft, Math.min(event.clientX - rect.left + 8, maxLeft));
+      tip.style.left = tipLeft + "px";
+      tip.style.top = "4px";
+    };
+
+    canvas.onmouseleave = function () {
+      tip.style.display = "none";
     };
   }
 

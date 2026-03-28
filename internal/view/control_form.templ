@@ -62,7 +62,7 @@ func controlStateLabel(labels []string, idx int) string {
 
 // ControlFormPage renders the create and edit control form used by the UI.
 templ ControlFormPage(data ControlFormPageData) {
-	@Layout(data.Title) {
+	@Layout(data.Title, "/controls") {
 		<div class="page-header">
 			<div>
 				<h1>{ data.Heading }</h1>
@@ -118,9 +118,10 @@ templ ControlForm(data ControlFormPageData) {
 			<p class="form-hint">{ data.StructureHint }</p>
 		}
 		<div class="state-grid">
+			<span class="state-grid-label">State Labels</span>
 			for _, idx := range controlStateIndexes() {
 				<label class={ stateFieldClass(controlStateEnabled(controlFormNumStates(data.Form), idx)) }>
-					<span>{ fmt.Sprintf("State %d label", idx+1) }</span>
+					<span>{ fmt.Sprintf("State %d", idx+1) }</span>
 					<input
 						type="text"
 						name="stateLabel"

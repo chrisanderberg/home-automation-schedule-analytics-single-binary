@@ -257,6 +257,15 @@ func normalizeControlType(controlType ControlType) ControlType {
 
 // ListModels returns registered and inferred models for one control in stable order.
 func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, error) {
+	keys, err := ListAggregateKeys(ctx, db, controlID)
+	if err != nil {
+		return nil, err
+	}
+	return ListModelsWithKeys(ctx, db, controlID, keys)
+}
+
+// ListModelsWithKeys returns registered and inferred models using preloaded aggregate keys.
+func ListModelsWithKeys(ctx context.Context, db *sql.DB, controlID string, keys []AggregateKey) ([]Model, error) {
 	modelMap := make(map[string]Model)
 
 	rows, err := db.QueryContext(ctx, `SELECT control_id, model_id FROM models WHERE control_id = ? ORDER BY model_id`, controlID)
@@ -275,10 +284,6 @@ func ListModels(ctx context.Context, db *sql.DB, controlID string) ([]Model, err
 		return nil, err
 	}
 
-	keys, err := ListAggregateKeys(ctx, db, controlID)
-	if err != nil {
-		return nil, err
-	}
 	// Aggregate-derived model IDs remain visible even before explicit metadata is created.
 	for _, key := range keys {
 		if _, ok := modelMap[key.ModelID]; !ok {
