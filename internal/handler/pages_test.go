@@ -377,6 +377,48 @@ func TestControlPageShowsReportParameterControls(t *testing.T) {
 	if !strings.Contains(body, `name="include" value="raw" checked`) || !strings.Contains(body, `name="include" value="rates" checked`) {
 		t.Fatalf("expected include checkboxes to reflect query params, got %q", body)
 	}
+	if !strings.Contains(body, `id="selector-form"`) || !strings.Contains(body, `type="submit" class="btn btn-secondary">Update report</button>`) {
+		t.Fatalf("expected selector form submit fallback, got %q", body)
+	}
+	if !strings.Contains(body, `type="hidden" name="smoothing" value="none"`) {
+		t.Fatalf("expected selector form to preserve smoothing, got %q", body)
+	}
+	if !strings.Contains(body, `type="hidden" name="holdingDampingMillis" value="0"`) || !strings.Contains(body, `type="hidden" name="transitionDampingCount" value="0"`) {
+		t.Fatalf("expected selector form to preserve damping params, got %q", body)
+	}
+	if !strings.Contains(body, `type="hidden" name="include" value="raw"`) || !strings.Contains(body, `type="hidden" name="include" value="rates"`) {
+		t.Fatalf("expected selector form to preserve include params, got %q", body)
+	}
+}
+
+// TestControlPageExpandsReportParametersOnValidationError verifies report parameter errors keep the details panel open.
+func TestControlPageExpandsReportParametersOnValidationError(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	cfg := ingest.Config{
+		TimeZone:  "America/Los_Angeles",
+		Latitude:  37.77,
+		Longitude: -122.42,
+	}
+	if err := demodata.SeedDemoData(ctx, db, cfg); err != nil {
+		t.Fatalf("seed demo data: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/controls/living-room-scene/analytics?model="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc&smoothing=none&kernelRadius=6", nil)
+	req.SetPathValue("controlID", "living-room-scene")
+	w := httptest.NewRecorder()
+	HandleAnalyticsPage(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "kernel parameters are only valid with gaussian smoothing") {
+		t.Fatalf("expected validation error in body, got %q", body)
+	}
+	if !strings.Contains(body, `<details class="report-params-panel" open>`) {
+		t.Fatalf("expected report params panel to open on error, got %q", body)
+	}
 }
 
 // TestControlPageRawModeEmbedsSameBucketsAsAPI verifies the raw-mode page uses the same bucket arrays as the raw API.

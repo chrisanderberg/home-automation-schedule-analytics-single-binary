@@ -165,7 +165,10 @@
       }
       tip.textContent = text;
       tip.style.display = "block";
-      const tipLeft = Math.min(event.clientX - rect.left + 8, rect.width - 10);
+      const tipWidth = Math.ceil(tip.getBoundingClientRect().width || tip.offsetWidth || 0);
+      const minLeft = Math.max(PADDING.left, 0);
+      const maxLeft = Math.max(minLeft, rect.width - tipWidth - 10);
+      const tipLeft = Math.max(minLeft, Math.min(event.clientX - rect.left + 8, maxLeft));
       tip.style.left = tipLeft + "px";
       tip.style.top = "4px";
     };

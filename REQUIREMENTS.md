@@ -153,6 +153,10 @@ partially defined upfront and extended as development proceeds.
 - Prefer vendored client-side dependencies over CDN-hosted ones when the
   application may be deployed on a local network.
   Rationale: CDN access may not be dependable in the target environment.
+- Prefer the UI to rely on system or locally served font stacks rather than
+  third-party hosted font imports.
+  Rationale: local-network deployments and privacy-sensitive environments
+  should not require external font fetches for the application shell to render.
 - Prefer blocking UI edits that would invalidate existing aggregate blob shape
   once a control already has aggregate data.
   Rationale: aggregate blobs are keyed to the configured state cardinality, so
@@ -225,6 +229,11 @@ partially defined upfront and extended as development proceeds.
   and optional intermediate-series toggles.
   Rationale: keeping the UI URL model aligned with the API makes ad hoc visual
   inspection and automated harness testing comparable.
+- Prefer control-page analytics selector forms to remain usable without
+  JavaScript by exposing a visible submit action and preserving current
+  report-parameter query state in plain HTML controls.
+  Rationale: progressive selector behavior avoids broken analytics navigation
+  when client-side autosubmit code is unavailable or fails to load.
 - Prefer the control page to render raw and derived analytics as separate
   panels rather than forcing one view model to collapse both concepts.
   Rationale: raw per-bucket holdings/transitions and derived preference reports

@@ -366,7 +366,7 @@ func buildControlConfigData(ctx context.Context, db *sql.DB, control storage.Con
 		HasAggregates: len(keys) > 0,
 		ModelForm:     defaultModelForm(control.ControlID),
 	}
-	models, err := storage.ListModels(ctx, db, control.ControlID)
+	models, err := storage.ListModelsWithKeys(ctx, db, control.ControlID, keys)
 	if err != nil {
 		return view.ControlConfigData{}, err
 	}
@@ -389,7 +389,7 @@ func buildAnalyticsDashboardData(r *http.Request, db *sql.DB, control storage.Co
 		HasAggregates:  len(keys) > 0,
 	}
 
-	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	models, err := storage.ListModelsWithKeys(r.Context(), db, control.ControlID, keys)
 	if err != nil {
 		return view.AnalyticsDashboardData{}, err
 	}
@@ -459,7 +459,7 @@ func buildRawAnalyticsDashboardData(r *http.Request, db *sql.DB, control storage
 		HasAggregates:  len(keys) > 0,
 	}
 
-	models, err := storage.ListModels(r.Context(), db, control.ControlID)
+	models, err := storage.ListModelsWithKeys(r.Context(), db, control.ControlID, keys)
 	if err != nil {
 		return view.RawAnalyticsDashboardData{}, err
 	}

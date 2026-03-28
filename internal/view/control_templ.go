@@ -40,92 +40,6 @@ type ModelFormData struct {
 	Error   string
 }
 
-// AnalyticsOptionsFormData carries the URL-backed report-parameter controls.
-type AnalyticsOptionsFormData struct {
-	Action                 string
-	ModelID                string
-	Quarter                string
-	Clock                  string
-	Mode                   string
-	Smoothing              string
-	KernelRadius           string
-	KernelSigma            string
-	HoldingDampingMillis   string
-	TransitionDampingCount string
-	IncludeRaw             bool
-	IncludeSmoothed        bool
-	IncludeRates           bool
-	Error                  string
-}
-
-// AnalyticsViewData packages the selected analytics slice for template rendering.
-type AnalyticsViewData struct {
-	HasData          bool
-	ModelID          string
-	QuarterLabel     string
-	ClockLabel       string
-	States           []AnalyticsStateData
-	Diagnostics      AnalyticsDiagnostics
-	OccupancyChart   ChartData
-	PreferenceChart  ChartData
-	ChartLegendItems []ChartLegendItem
-}
-
-// AnalyticsStateData carries one state's occupancy and preference series.
-type AnalyticsStateData struct {
-	OccupancyMean  string
-	PreferenceMean string
-	Label          string
-}
-
-// AnalyticsDiagnostics carries the diagnostics shown beside the analytics charts.
-type AnalyticsDiagnostics struct {
-	TotalHolding    string
-	TransitionCount string
-	FallbackBuckets int
-}
-
-// RawAnalyticsViewData packages the selected raw analytics slice for template rendering.
-type RawAnalyticsViewData struct {
-	HasData              bool
-	ModelID              string
-	QuarterLabel         string
-	ClockLabel           string
-	TotalHolding         string
-	TransitionCount      string
-	TotalHoldingChart    ChartData
-	TotalTransitionChart ChartData
-	HoldingStates        []RawAnalyticsStateData
-	TransitionSeries     []RawAnalyticsTransitionData
-}
-
-// RawAnalyticsStateData carries one state's raw holding series.
-type RawAnalyticsStateData struct {
-	Label        string
-	TotalHolding string
-	HoldingChart ChartData
-}
-
-// RawAnalyticsTransitionData carries one transition's raw counter series.
-type RawAnalyticsTransitionData struct {
-	Label           string
-	TransitionTotal string
-	TransitionChart ChartData
-}
-
-// ChartData carries one serialized chart payload for the frontend renderer.
-type ChartData struct {
-	Kind    string
-	Payload string
-	Summary string
-}
-
-// ChartLegendItem describes one legend swatch for stacked state charts.
-type ChartLegendItem struct {
-	Label string
-	Color string
-}
-
 // ControlPage renders the configuration view for one control (form + models).
 func ControlPage(data ControlConfigData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -176,7 +90,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(data.ModelForm.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 135, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 49, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -200,7 +114,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 					var templ_7745c5c3_Var4 templ.SafeURL
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(model.Action))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 141, Col: 62}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 55, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -213,7 +127,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(modelRowValue(model))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 144, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 58, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -231,7 +145,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 						var templ_7745c5c3_Var6 string
 						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(model.Error)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 148, Col: 25}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 62, Col: 25}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 						if templ_7745c5c3_Err != nil {
@@ -259,7 +173,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 			var templ_7745c5c3_Var7 templ.SafeURL
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(data.ModelForm.Action))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 156, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 70, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -272,7 +186,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(data.ModelForm.ModelID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 159, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 73, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -290,7 +204,7 @@ func ControlPage(data ControlConfigData) templ.Component {
 				var templ_7745c5c3_Var9 templ.SafeURL
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/controls/%s/analytics", url.PathEscape(data.ControlID))))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 165, Col: 97}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/view/control.templ`, Line: 79, Col: 97}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {

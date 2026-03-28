@@ -33,6 +33,7 @@ templ AnalyticsDashboardPage(data AnalyticsDashboardData) {
 			</div>
 		} else {
 			<form method="get" action={ templ.SafeURL(data.SelectorAction) } class="selector-bar" id="selector-form">
+				@AnalyticsReportParamHiddenInputs(data.ReportOptions)
 				if len(data.ModelOptions) > 0 {
 					<div class="selector-field">
 						<label for="sel-model">Model</label>
@@ -63,13 +64,16 @@ templ AnalyticsDashboardPage(data AnalyticsDashboardData) {
 						</select>
 					</div>
 				}
+				<div class="form-actions">
+					<button type="submit" class="btn btn-secondary">Update report</button>
+				</div>
 			</form>
 			if data.ReportOptions.Error != "" {
 				<div class="form-errors">
 					<p>{ data.ReportOptions.Error }</p>
 				</div>
 			}
-			<details class="report-params-panel">
+			<details class="report-params-panel" open?={ data.ReportOptions.Error != "" }>
 				<summary>Report Parameters</summary>
 				<div class="form-card">
 					<form method="get" action={ templ.SafeURL(data.ReportOptions.Action) } class="analytics-options-form">
@@ -123,6 +127,33 @@ templ AnalyticsDashboardPage(data AnalyticsDashboardData) {
 			</details>
 			@AnalyticsPanel(data.Analytics)
 		}
+	}
+}
+
+templ AnalyticsReportParamHiddenInputs(data AnalyticsOptionsFormData) {
+	if data.Smoothing != "" {
+		<input type="hidden" name="smoothing" value={ data.Smoothing }/>
+	}
+	if data.KernelRadius != "" {
+		<input type="hidden" name="kernelRadius" value={ data.KernelRadius }/>
+	}
+	if data.KernelSigma != "" {
+		<input type="hidden" name="kernelSigma" value={ data.KernelSigma }/>
+	}
+	if data.HoldingDampingMillis != "" {
+		<input type="hidden" name="holdingDampingMillis" value={ data.HoldingDampingMillis }/>
+	}
+	if data.TransitionDampingCount != "" {
+		<input type="hidden" name="transitionDampingCount" value={ data.TransitionDampingCount }/>
+	}
+	if data.IncludeRaw {
+		<input type="hidden" name="include" value="raw"/>
+	}
+	if data.IncludeSmoothed {
+		<input type="hidden" name="include" value="smoothed"/>
+	}
+	if data.IncludeRates {
+		<input type="hidden" name="include" value="rates"/>
 	}
 }
 
