@@ -54,7 +54,7 @@ func TestAnalyticsGoldenFixtures(t *testing.T) {
 
 func analyticsRawFixtureURL(fixture analyticstest.Fixture) string {
 	return fmt.Sprintf(
-		"/api/v1/analytics/raw?controlId=%s&modelId=%s&quarter=%d&clock=utc",
+		"/api/analytics/raw?controlId=%s&modelId=%s&quarter=%d&clock=utc",
 		url.QueryEscape(fixture.Control.ControlID),
 		url.QueryEscape(fixture.Aggregate.ModelID),
 		fixture.Aggregate.QuarterIndex,
@@ -87,7 +87,7 @@ func analyticsReportFixtureURL(fixture analyticstest.Fixture, query analyticstes
 	for _, include := range query.Include {
 		values.Add("include", include)
 	}
-	return "/api/v1/analytics/report?" + values.Encode()
+	return "/api/analytics/report?" + values.Encode()
 }
 
 func requireFixtureRawMatchesSeed(t *testing.T, fixture analyticstest.Fixture, clock analytics.RawClockReport) {

@@ -3,3 +3,6 @@ data/snapshots/*.sqlite
 testdata/*.sqlite
 home-automation-schedule-analytics
 .env
+.agents/
+.claude/
+skills-lock.json

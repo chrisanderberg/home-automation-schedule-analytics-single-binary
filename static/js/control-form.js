@@ -1,6 +1,6 @@
 (() => {
   const radioButtonLabels = ["on", "off"];
-  const sliderDefaults = ["min", "trans 1", "trans 2", "trans 3", "trans 4", "max"];
+  const sliderDefaults = ["min", "transition 1", "transition 2", "transition 3", "transition 4", "max"];
   const radioButtonDefaultLabel = (index) => {
     if (index < radioButtonLabels.length) {
       return radioButtonLabels[index];
@@ -14,11 +14,17 @@
     const numStates = form.querySelector('input[name="numStates"]');
     const stateLabels = Array.from(form.querySelectorAll('input[name="stateLabel"]'));
     let lastControlType = controlType ? controlType.value : "";
-    let sliderDraft = Array.from({ length: sliderDefaults.length }, (_, i) => stateLabels[i]?.value ?? sliderDefaults[i]);
-    let radioDraft = stateLabels.map((input, i) => input.value || radioButtonDefaultLabel(i));
+    let sliderDraft = sliderDefaults.slice();
+    let radioDraft = stateLabels.map((_, i) => radioButtonDefaultLabel(i));
 
     if (!controlType || !numStates || stateLabels.length === 0) {
       continue;
+    }
+
+    if (lastControlType === "sliders") {
+      sliderDraft = Array.from({ length: sliderDefaults.length }, (_, i) => stateLabels[i]?.value || sliderDefaults[i]);
+    } else {
+      radioDraft = stateLabels.map((input, i) => input.value || radioButtonDefaultLabel(i));
     }
 
     const enabledRadioStates = () => Number.parseInt(numStates.value, 10) || 0;

@@ -22,14 +22,13 @@ func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 
 	// JSON API
-	mux.HandleFunc("GET /api/v1/health", handler.HandleHealth())
-	mux.HandleFunc("GET /api/v1/analytics", handler.HandleAnalytics(cfg.DB))
-	mux.HandleFunc("GET /api/v1/analytics/raw", handler.HandleAnalyticsRaw(cfg.DB))
-	mux.HandleFunc("GET /api/v1/analytics/report", handler.HandleAnalyticsReport(cfg.DB))
-	mux.HandleFunc("POST /api/v1/controls", handler.HandleControls(cfg.DB))
-	mux.HandleFunc("POST /api/v1/holding-intervals", handler.HandleHolding(cfg.DB, cfg.IngestCfg))
-	mux.HandleFunc("POST /api/v1/transitions", handler.HandleTransitions(cfg.DB, cfg.IngestCfg))
-	mux.HandleFunc("POST /api/v1/snapshots", handler.HandleSnapshots(cfg.DB, cfg.SnapshotDir))
+	mux.HandleFunc("GET /api/health", handler.HandleHealth())
+	mux.HandleFunc("GET /api/analytics/raw", handler.HandleAnalyticsRaw(cfg.DB))
+	mux.HandleFunc("GET /api/analytics/report", handler.HandleAnalyticsReport(cfg.DB))
+	mux.HandleFunc("POST /api/controls", handler.HandleControls(cfg.DB))
+	mux.HandleFunc("POST /api/holding-intervals", handler.HandleHolding(cfg.DB, cfg.IngestCfg))
+	mux.HandleFunc("POST /api/transitions", handler.HandleTransitions(cfg.DB, cfg.IngestCfg))
+	mux.HandleFunc("POST /api/snapshots", handler.HandleSnapshots(cfg.DB, cfg.SnapshotDir))
 
 	// HTML pages
 	mux.HandleFunc("GET /{$}", handler.HandleHomePage(cfg.DB))

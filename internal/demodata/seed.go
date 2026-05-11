@@ -53,7 +53,7 @@ func SeedDemoData(ctx context.Context, db *sql.DB, cfg ingest.Config) error {
 			ControlID:   "office-dimmer",
 			ControlType: storage.ControlTypeSliders,
 			NumStates:   6,
-			StateLabels: []string{"min", "trans 1", "trans 2", "trans 3", "trans 4", "max"},
+			StateLabels: []string{"min", "transition 1", "transition 2", "transition 3", "transition 4", "max"},
 		},
 	}
 	for _, control := range controls {

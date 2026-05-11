@@ -105,11 +105,11 @@ partially defined upfront and extended as development proceeds.
   topology.
   Rationale: standard in-memory tests and `httptest` are sufficient for this
   project and keep the runtime model simpler.
-- Prefer JSON API endpoints under `/api/v1/` so API routes can coexist cleanly
+- Prefer JSON API endpoints under `/api/` so API routes can coexist cleanly
   with HTML page routes at the root.
   Rationale: this keeps page routing and API routing distinct without adding
   another process or application boundary.
-- Prefer structured analytics read endpoints under `/api/v1/analytics` for
+- Prefer structured analytics read endpoints under `/api/analytics` for
   retrieving one `(control, model, quarter, clock)` analytical slice as JSON.
   Rationale: read-side analytics should be available to UI and automation
   clients without introducing a separate reporting service.
@@ -141,7 +141,7 @@ partially defined upfront and extended as development proceeds.
   than requiring one transaction across all affected quarters.
   Rationale: per-quarter atomicity is sufficient for this project and keeps the
   storage contract simpler.
-- Prefer CGO-free SQLite snapshot export approaches such as schema-and-data
+- Prefer CGO-free SQLite snapshot creation approaches such as schema-and-data
   copy over designs that require the SQLite backup API.
   Rationale: staying CGO-free keeps the single-binary build and local setup
   simpler.
@@ -200,7 +200,7 @@ partially defined upfront and extended as development proceeds.
   Rationale: common radio-button-style controls usually start as an on/off
   toggle, and non-blank defaults make UI configuration faster and clearer.
 - Prefer sliders to be UI-configured as a fixed six-state control with
-  default labels `min`, `trans 1`, `trans 2`, `trans 3`, `trans 4`, and `max`.
+  default labels `min`, `transition 1`, `transition 2`, `transition 3`, `transition 4`, and `max`.
   Rationale: slider analytics already assume the fixed six-state shape, so the
   UI should reflect that contract directly instead of offering an invalid state
   count choice.

@@ -434,7 +434,7 @@ func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	apiW := httptest.NewRecorder()
 	HandleAnalyticsRaw(db).ServeHTTP(apiW, apiReq)
 	if apiW.Code != http.StatusOK {
@@ -652,7 +652,7 @@ func TestCreateSlidersFromUIDefaultsToSixStates(t *testing.T) {
 	if control.NumStates != 6 {
 		t.Fatalf("expected 6 sliders states, got %d", control.NumStates)
 	}
-	want := []string{"min", "trans 1", "trans 2", "trans 3", "trans 4", "max"}
+	want := []string{"min", "transition 1", "transition 2", "transition 3", "transition 4", "max"}
 	if strings.Join(control.StateLabels, "|") != strings.Join(want, "|") {
 		t.Fatalf("unexpected sliders labels: %+v", control.StateLabels)
 	}

@@ -11,8 +11,8 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
-// TestExportCreatesConsistentCopy verifies snapshot export preserves schema objects and control data.
-func TestExportCreatesConsistentCopy(t *testing.T) {
+// TestCreateSnapshotCreatesConsistentCopy verifies snapshot creation preserves schema objects and control data.
+func TestCreateSnapshotCreatesConsistentCopy(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -35,9 +35,9 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 	dir := t.TempDir()
 	snapDir := filepath.Join(dir, "snapshots")
 
-	path, err := Export(ctx, db, snapDir)
+	path, err := CreateSnapshot(ctx, db, snapDir)
 	if err != nil {
-		t.Fatalf("export: %v", err)
+		t.Fatalf("create snapshot: %v", err)
 	}
 
 	if _, err := os.Stat(path); err != nil {
@@ -67,8 +67,8 @@ func TestExportCreatesConsistentCopy(t *testing.T) {
 	}
 }
 
-// TestExportGeneratesUniquePaths verifies repeated exports do not reuse snapshot filenames.
-func TestExportGeneratesUniquePaths(t *testing.T) {
+// TestCreateSnapshotGeneratesUniquePaths verifies repeated snapshot creation does not reuse filenames.
+func TestCreateSnapshotGeneratesUniquePaths(t *testing.T) {
 	db, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -81,13 +81,13 @@ func TestExportGeneratesUniquePaths(t *testing.T) {
 	}
 
 	snapDir := t.TempDir()
-	path1, err := Export(ctx, db, snapDir)
+	path1, err := CreateSnapshot(ctx, db, snapDir)
 	if err != nil {
-		t.Fatalf("first export: %v", err)
+		t.Fatalf("first create snapshot: %v", err)
 	}
-	path2, err := Export(ctx, db, snapDir)
+	path2, err := CreateSnapshot(ctx, db, snapDir)
 	if err != nil {
-		t.Fatalf("second export: %v", err)
+		t.Fatalf("second create snapshot: %v", err)
 	}
 	if path1 == path2 {
 		t.Fatalf("expected unique snapshot paths, got %q", path1)

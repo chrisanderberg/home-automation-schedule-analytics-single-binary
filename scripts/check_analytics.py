@@ -327,8 +327,8 @@ def build_remote_payloads(args):
         "quarter": str(args.quarter),
         "clock": args.clock,
     }
-    raw_url = f"{args.base_url.rstrip('/')}/api/v1/analytics/raw?{urllib.parse.urlencode(raw_query, doseq=True)}"
-    report_url = f"{args.base_url.rstrip('/')}/api/v1/analytics/report?{urllib.parse.urlencode(report_query, doseq=True)}"
+    raw_url = f"{args.base_url.rstrip('/')}/api/analytics/raw?{urllib.parse.urlencode(raw_query, doseq=True)}"
+    report_url = f"{args.base_url.rstrip('/')}/api/analytics/report?{urllib.parse.urlencode(report_query, doseq=True)}"
     return fetch_json(raw_url), fetch_json(report_url)
 
 

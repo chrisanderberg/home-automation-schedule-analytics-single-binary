@@ -16,7 +16,7 @@ Docker orchestration. This iteration consolidates everything into a single Go
 binary:
 
 - No Dagster, no Docker, no separate reporting service.
-- Aggregation, views, and snapshot export all in one process.
+- Aggregation, views, and snapshot creation all in one process.
 - Standard Go testing replaces the dual-port testing topology.
 - Server-rendered HTML replaces the React SPA.
 
@@ -52,19 +52,18 @@ HAA_LATITUDE=59.33 HAA_LONGITUDE=18.07 make run
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/health` | Health check |
-| `GET` | `/api/v1/analytics` | Read analytics/reporting data as JSON for one control/model/quarter, optionally filtered to one clock |
-| `GET` | `/api/v1/analytics/raw` | Read stored per-bucket holdings and transitions without smoothing, damping, or inference |
-| `GET` | `/api/v1/analytics/report` | Read parameterized derived analytics with optional intermediate series |
-| `POST` | `/api/v1/controls` | Register/update a control |
-| `POST` | `/api/v1/holding-intervals` | Ingest a holding interval |
-| `POST` | `/api/v1/transitions` | Ingest a user-initiated transition |
-| `POST` | `/api/v1/snapshots` | Export a SQLite snapshot |
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/analytics/raw` | Read stored per-bucket holdings and transitions without smoothing, damping, or inference |
+| `GET` | `/api/analytics/report` | Read parameterized derived analytics with optional intermediate series |
+| `POST` | `/api/controls` | Register/update a control |
+| `POST` | `/api/holding-intervals` | Ingest a holding interval |
+| `POST` | `/api/transitions` | Ingest a user-initiated transition |
+| `POST` | `/api/snapshots` | Create a SQLite snapshot |
 
 ### Example: register a control
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/controls \
+curl -X POST http://localhost:8080/api/controls \
   -H 'Content-Type: application/json' \
   -d '{"controlId":"light","controlType":"radio buttons","numStates":3,"stateLabels":["off","dim","bright"]}'
 ```
@@ -72,42 +71,24 @@ curl -X POST http://localhost:8080/api/v1/controls \
 ### Example: ingest a holding interval
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/holding-intervals \
+curl -X POST http://localhost:8080/api/holding-intervals \
   -H 'Content-Type: application/json' \
   -d '{"controlId":"light","modelId":"default","state":1,"startTimeMs":1578268800000,"endTimeMs":1578269100000}'
 ```
 
-### Example: read legacy analytics as JSON
-
-Required query parameters:
-
-- `controlId`
-- `modelId`
-- `quarter`
-
-Optional query parameter:
-
-- `clock` (`utc`, `local`, `mean-solar`, `apparent-solar`, or `unequal-hours`)
-
-```bash
-curl "http://localhost:8080/api/v1/analytics?controlId=living-room-scene&modelId=weekday&quarter=224&clock=utc"
-```
-
-If `clock` is omitted, the endpoint returns the full report across all clocks.
-
 ### Example: read raw per-bucket analytics
 
-`/api/v1/analytics/raw` returns stored aggregate counters exactly as recorded.
+`/api/analytics/raw` returns stored aggregate counters exactly as recorded.
 It exposes per-state holding milliseconds and per-transition counts for each
 bucket, without smoothing, damping, normalization, or CTMC inference.
 
 ```bash
-curl "http://localhost:8080/api/v1/analytics/raw?controlId=living-room-scene&modelId=weekday&quarter=224&clock=utc"
+curl "http://localhost:8080/api/analytics/raw?controlId=living-room-scene&modelId=weekday&quarter=224&clock=utc"
 ```
 
 ### Example: read parameterized derived analytics
 
-`/api/v1/analytics/report` returns derived occupancy and inferred-preference
+`/api/analytics/report` returns derived occupancy and inferred-preference
 series and accepts explicit report parameters.
 
 Supported query parameters:
@@ -124,12 +105,11 @@ Supported query parameters:
 - `include=raw,smoothed,rates,diagnostics`
 
 ```bash
-curl "http://localhost:8080/api/v1/analytics/report?controlId=living-room-scene&modelId=weekday&quarter=224&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw,rates"
+curl "http://localhost:8080/api/analytics/report?controlId=living-room-scene&modelId=weekday&quarter=224&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw,rates"
 ```
 
-By default, `/api/v1/analytics/report` uses the same smoothing and damping
-behavior as the existing `/api/v1/analytics` endpoint. The report response
-echoes the parameters applied so harnesses can reproduce the result exactly.
+The report response echoes the parameters applied so harnesses can reproduce the
+result exactly.
 
 ## Pages
 
@@ -137,7 +117,7 @@ echoes the parameters applied so harnesses can reproduce the result exactly.
 |---|---|
 | `/` | Home — list of registered controls with aggregate counts |
 | `/controls/{controlID}` | Control detail with heatmap visualization |
-| `/snapshots` | Snapshot management (export + history) |
+| `/snapshots` | Snapshot management (create snapshot + history) |
 
 ## Development
 
@@ -180,8 +160,8 @@ silently double-count aggregate data.
 
 The repository now tests analytics in layers:
 
-- raw aggregate contract checks for `/api/v1/analytics/raw`
-- parameterized report contract checks for `/api/v1/analytics/report`
+- raw aggregate contract checks for `/api/analytics/raw`
+- parameterized report contract checks for `/api/analytics/report`
 - fixture-driven golden tests under `testdata/analytics/`
 - UI/API parity tests for the control page
 - an independent Python reference checker in `scripts/check_analytics.py`
@@ -244,7 +224,7 @@ internal/
   domain/     # blob index math, bucketing (5 clocks), quarter splitting
   storage/    # SQLite schema, CRUD, concurrent-safe aggregate updates
   ingest/     # holding interval + transition ingestion pipeline
-  snapshot/   # SQLite backup export
+  snapshot/   # SQLite snapshot creation
   handler/    # JSON API handlers + HTML page handlers
   server/     # HTTP router wiring
   view/       # TEMPL templates (layout, home, control, snapshot)

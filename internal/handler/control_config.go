@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,15 +18,16 @@ const (
 	maxControlStates = 10
 )
 
-var defaultSliderLabels = []string{"min", "trans 1", "trans 2", "trans 3", "trans 4", "max"}
+var defaultSliderLabels = []string{"min", "transition 1", "transition 2", "transition 3", "transition 4", "max"}
 var defaultRadioButtonLabels = []string{"on", "off"}
 
 // controlInput is the normalized control form payload shared by API and page handlers.
 type controlInput struct {
-	ControlID   string
-	ControlType string
-	NumStates   int
-	StateLabels []string
+	ControlID    string
+	ControlType  string
+	NumStates    int
+	HasNumStates bool
+	StateLabels  []string
 }
 
 // clampStateCount limits free-form state counts to the supported range.
@@ -48,10 +50,6 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 	if controlID == "new" {
 		return storage.Control{}, "invalid controlId"
 	}
-	if input.NumStates < minControlStates || input.NumStates > maxControlStates {
-		return storage.Control{}, "invalid numStates"
-	}
-
 	controlType := strings.TrimSpace(input.ControlType)
 	switch controlType {
 	case "discrete":
@@ -64,10 +62,6 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 	if controlType != string(storage.ControlTypeRadioButtons) && controlType != string(storage.ControlTypeSliders) {
 		return storage.Control{}, "invalid controlType"
 	}
-	if controlType == string(storage.ControlTypeSliders) && input.NumStates != 6 {
-		return storage.Control{}, "sliders must use exactly 6 states"
-	}
-
 	labels := make([]string, len(input.StateLabels))
 	allBlank := true
 	for i, label := range input.StateLabels {
@@ -76,19 +70,51 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 			allBlank = false
 		}
 	}
-	if len(labels) > 0 && len(labels) != input.NumStates {
-		return storage.Control{}, "stateLabels must have exactly numStates elements when provided"
-	}
 	if allBlank {
 		labels = nil
+	}
+
+	numStates := input.NumStates
+	if labels != nil {
+		if input.HasNumStates && input.NumStates != len(labels) {
+			return storage.Control{}, "numStates must match stateLabels length when both are provided"
+		}
+		numStates = len(labels)
+	} else if !input.HasNumStates {
+		return storage.Control{}, "invalid numStates"
+	}
+	if numStates < minControlStates || numStates > maxControlStates {
+		return storage.Control{}, "invalid numStates"
+	}
+	if controlType == string(storage.ControlTypeSliders) && numStates != 6 {
+		return storage.Control{}, "sliders must use exactly 6 states"
+	}
+	if controlType == string(storage.ControlTypeSliders) && labels != nil {
+		fillSliderLabelDefaults(labels)
 	}
 
 	return storage.Control{
 		ControlID:   controlID,
 		ControlType: storage.ControlType(controlType),
-		NumStates:   input.NumStates,
+		NumStates:   numStates,
 		StateLabels: labels,
 	}, ""
+}
+
+func fillSliderLabelDefaults(labels []string) {
+	for i := range labels {
+		if labels[i] != "" {
+			continue
+		}
+		switch i {
+		case 0:
+			labels[i] = "min"
+		case len(labels) - 1:
+			labels[i] = "max"
+		default:
+			labels[i] = fmt.Sprintf("state%d", i+1)
+		}
+	}
 }
 
 // parseControlForm reads and validates the control form submission.
@@ -136,10 +162,11 @@ func parseControlForm(r *http.Request) (storage.Control, view.ControlFormData, s
 	}
 
 	control, errMsg := validateControlInput(controlInput{
-		ControlID:   form.ControlID,
-		ControlType: form.ControlType,
-		NumStates:   form.NumStates,
-		StateLabels: form.StateLabels,
+		ControlID:    form.ControlID,
+		ControlType:  form.ControlType,
+		NumStates:    form.NumStates,
+		HasNumStates: true,
+		StateLabels:  form.StateLabels,
 	})
 	if errMsg != "" {
 		return storage.Control{}, form, errMsg

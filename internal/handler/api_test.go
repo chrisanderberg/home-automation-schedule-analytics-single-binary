@@ -58,9 +58,18 @@ func postRaw(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
 	return w
 }
 
+func requireJSONMap(t *testing.T, body []byte) map[string]string {
+	t.Helper()
+	var payload map[string]string
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode response: %v body=%q", err, string(body))
+	}
+	return payload
+}
+
 // TestHealthReturns200 verifies the health endpoint responds successfully.
 func TestHealthReturns200(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	w := httptest.NewRecorder()
 	HandleHealth().ServeHTTP(w, req)
 
@@ -69,13 +78,16 @@ func TestHealthReturns200(t *testing.T) {
 	}
 }
 
-// TestControlsAccepted verifies valid control payloads are accepted and persisted.
-func TestControlsAccepted(t *testing.T) {
+// TestControlsReturns200 verifies valid control payloads succeed and persist synchronously.
+func TestControlsReturns200(t *testing.T) {
 	db := openTestDB(t)
 	body := map[string]any{"controlId": "light", "controlType": "radio buttons", "numStates": 3}
 	w := postJSON(HandleControls(db), body)
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
 	}
 
 	c, err := storage.GetControl(context.Background(), db, "light")
@@ -132,8 +144,11 @@ func TestControlsRejectTrailingJSON(t *testing.T) {
 func TestControlsAcceptSingleJSONValueWithTrailingWhitespace(t *testing.T) {
 	db := openTestDB(t)
 	w := postRaw(HandleControls(db), "{\n\"controlId\":\"light\",\"controlType\":\"radio buttons\",\"numStates\":3\n}\n")
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
 	}
 }
 
@@ -157,13 +172,35 @@ func TestControlsRejectsBadControlType(t *testing.T) {
 	}
 }
 
-// TestControlsRejectsStateLabelsMismatch verifies provided state labels must match the configured state count.
+// TestControlsRejectsStateLabelsMismatch verifies mismatched state count and labels are rejected.
 func TestControlsRejectsStateLabelsMismatch(t *testing.T) {
 	db := openTestDB(t)
-	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"a"}}
+	numStates := 2
+	body := map[string]any{"controlId": "x", "controlType": "radio buttons", "numStates": numStates, "stateLabels": []string{"a", "b", "c"}}
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestControlsInfersNumStatesFromLabels verifies labels can define state count when numStates is omitted.
+func TestControlsInfersNumStatesFromLabels(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{"controlId": "scene", "controlType": "radio buttons", "stateLabels": []string{"off", "dim", "bright"}}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
+	}
+
+	control, err := storage.GetControl(context.Background(), db, "scene")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	if control.NumStates != 3 {
+		t.Fatalf("expected inferred 3 states, got %d", control.NumStates)
 	}
 }
 
@@ -174,6 +211,29 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	w := postJSON(HandleControls(db), body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestControlsFillsBlankSliderLabels verifies JSON callers cannot persist empty slider state labels.
+func TestControlsFillsBlankSliderLabels(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{
+		"controlId":   "slider",
+		"controlType": "sliders",
+		"stateLabels": []string{"", "low", "", "high", "", ""},
+	}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(context.Background(), db, "slider")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	want := []string{"min", "low", "state3", "high", "state5", "max"}
+	if strings.Join(control.StateLabels, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected slider labels: got %+v want %+v", control.StateLabels, want)
 	}
 }
 
@@ -240,8 +300,11 @@ func TestControlsCanUpdateLabelsWithAggregates(t *testing.T) {
 
 	body := map[string]any{"controlId": "mode", "controlType": "radio buttons", "numStates": 2, "stateLabels": []string{"cool", "warm"}}
 	w := postJSON(HandleControls(db), body)
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
 	}
 
 	control, err := storage.GetControl(ctx, db, "mode")
@@ -253,8 +316,8 @@ func TestControlsCanUpdateLabelsWithAggregates(t *testing.T) {
 	}
 }
 
-// TestHoldingAccepted verifies valid holding ingest requests are accepted.
-func TestHoldingAccepted(t *testing.T) {
+// TestHoldingReturns200 verifies valid holding ingest requests succeed synchronously.
+func TestHoldingReturns200(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
 		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 2,
@@ -264,8 +327,11 @@ func TestHoldingAccepted(t *testing.T) {
 
 	body := map[string]any{"controlId": "c", "modelId": "m", "state": 0, "startTimeMs": 1000, "endTimeMs": 2000}
 	w := postJSON(HandleHolding(db, testConfig()), body)
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
 	}
 }
 
@@ -279,8 +345,8 @@ func TestHoldingRejectsUnknownControl(t *testing.T) {
 	}
 }
 
-// TestTransitionAccepted verifies valid transition ingest requests are accepted.
-func TestTransitionAccepted(t *testing.T) {
+// TestTransitionReturns200 verifies valid transition ingest requests succeed synchronously.
+func TestTransitionReturns200(t *testing.T) {
 	db := openTestDB(t)
 	if err := storage.UpsertControl(context.Background(), db, storage.Control{
 		ControlID: "c", ControlType: storage.ControlTypeRadioButtons, NumStates: 3,
@@ -290,8 +356,11 @@ func TestTransitionAccepted(t *testing.T) {
 
 	body := map[string]any{"controlId": "c", "modelId": "m", "fromState": 0, "toState": 2, "timestampMs": 1000}
 	w := postJSON(HandleTransitions(db, testConfig()), body)
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if payload := requireJSONMap(t, w.Body.Bytes()); payload["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", payload)
 	}
 }
 
@@ -344,16 +413,19 @@ func TestAnalyticsReturnsStructuredClockReport(t *testing.T) {
 		t.Fatalf("update aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics?controlId=mode&modelId=weekday&quarter=12&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/raw?controlId=mode&modelId=weekday&quarter=12&clock=utc", nil)
 	w := httptest.NewRecorder()
-	HandleAnalytics(db).ServeHTTP(w, req)
+	HandleAnalyticsRaw(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, `"clockSlug":"utc"`) || !strings.Contains(body, `"quarterLabel":"1973 Q1"`) {
-		t.Fatalf("expected analytics clock payload, got %q", body)
+	if !strings.Contains(body, `"holdingMillis"`) || !strings.Contains(body, `"transitionCounts"`) {
+		t.Fatalf("expected raw series in payload, got %q", body)
+	}
+	if !strings.Contains(body, `"buckets":[300000`) {
+		t.Fatalf("expected stored holding counter, got %q", body)
 	}
 }
 
@@ -400,7 +472,7 @@ func TestAnalyticsRawReturnsStoredBucketData(t *testing.T) {
 		t.Fatalf("update aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=mode&modelId=weekday&quarter=12&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/raw?controlId=mode&modelId=weekday&quarter=12&clock=utc", nil)
 	w := httptest.NewRecorder()
 	HandleAnalyticsRaw(db).ServeHTTP(w, req)
 
@@ -432,7 +504,7 @@ func TestAnalyticsRawWithoutClockReturnsAllClocks(t *testing.T) {
 		t.Fatalf("seed aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=mode&modelId=weekday&quarter=12", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/raw?controlId=mode&modelId=weekday&quarter=12", nil)
 	w := httptest.NewRecorder()
 	HandleAnalyticsRaw(db).ServeHTTP(w, req)
 
@@ -480,7 +552,7 @@ func TestAnalyticsReportSupportsBypassingSmoothingAndDamping(t *testing.T) {
 		t.Fatalf("update aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/report?controlId=mode&modelId=weekday&quarter=12&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw,rates", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/report?controlId=mode&modelId=weekday&quarter=12&clock=utc&smoothing=none&holdingDampingMillis=none&transitionDampingCount=none&include=raw,rates", nil)
 	w := httptest.NewRecorder()
 	HandleAnalyticsReport(db).ServeHTTP(w, req)
 
@@ -539,7 +611,7 @@ func TestAnalyticsReportRejectsKernelParamsWithoutGaussian(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/report?controlId=mode&modelId=weekday&quarter=12&smoothing=none&kernelRadius=6", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/report?controlId=mode&modelId=weekday&quarter=12&smoothing=none&kernelRadius=6", nil)
 	w := httptest.NewRecorder()
 	HandleAnalyticsReport(db).ServeHTTP(w, req)
 
@@ -563,7 +635,7 @@ func TestAnalyticsReportAcceptsCommaSeparatedInclude(t *testing.T) {
 		t.Fatalf("seed aggregate: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/report?controlId=mode&modelId=weekday&quarter=12&clock=utc&include=raw,smoothed,rates", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/report?controlId=mode&modelId=weekday&quarter=12&clock=utc&include=raw,smoothed,rates", nil)
 	w := httptest.NewRecorder()
 	HandleAnalyticsReport(db).ServeHTTP(w, req)
 
@@ -576,21 +648,21 @@ func TestAnalyticsReportAcceptsCommaSeparatedInclude(t *testing.T) {
 	}
 }
 
-// TestAnalyticsRejectsMissingQueryParams verifies analytics requires a fully specified analytical slice.
-func TestAnalyticsRejectsMissingQueryParams(t *testing.T) {
+// TestAnalyticsReportRejectsMissingQueryParams verifies report analytics requires a fully specified analytical slice.
+func TestAnalyticsReportRejectsMissingQueryParams(t *testing.T) {
 	db := openTestDB(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics?controlId=mode", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/report?controlId=mode", nil)
 	w := httptest.NewRecorder()
-	HandleAnalytics(db).ServeHTTP(w, req)
+	HandleAnalyticsReport(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%q", w.Code, w.Body.String())
 	}
 }
 
-// TestAnalyticsReturnsSeededDemoScenario verifies the analytics endpoint surfaces seeded weekday/weekend report structure.
-func TestAnalyticsReturnsSeededDemoScenario(t *testing.T) {
+// TestAnalyticsReportReturnsSeededDemoScenario verifies the report endpoint surfaces seeded weekday/weekend report structure.
+func TestAnalyticsReportReturnsSeededDemoScenario(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 	cfg := ingest.Config{
@@ -602,9 +674,9 @@ func TestAnalyticsReturnsSeededDemoScenario(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/report?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	w := httptest.NewRecorder()
-	HandleAnalytics(db).ServeHTTP(w, req)
+	HandleAnalyticsReport(db).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", w.Code, w.Body.String())
@@ -618,8 +690,8 @@ func TestAnalyticsReturnsSeededDemoScenario(t *testing.T) {
 	}
 }
 
-// TestSnapshotExportsFile verifies the snapshot endpoint writes a file and returns its filename.
-func TestSnapshotExportsFile(t *testing.T) {
+// TestSnapshotReturnsStatusAndFilename verifies snapshot creation returns a shared success shape plus the created filename.
+func TestSnapshotReturnsStatusAndFilename(t *testing.T) {
 	db := openTestDB(t)
 	dir := t.TempDir()
 	snapDir := filepath.Join(dir, "snapshots")
@@ -632,9 +704,9 @@ func TestSnapshotExportsFile(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+	resp := requireJSONMap(t, w.Body.Bytes())
+	if resp["status"] != "ok" {
+		t.Fatalf("expected status ok payload, got %+v", resp)
 	}
 	if resp["snapshotFilename"] == "" {
 		t.Fatalf("expected snapshot filename in response")
