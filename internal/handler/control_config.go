@@ -17,7 +17,7 @@ const (
 	maxControlStates = 10
 )
 
-var defaultSliderLabels = []string{"min", "trans 1", "trans 2", "trans 3", "trans 4", "max"}
+var defaultSliderLabels = []string{"min", "transition 1", "transition 2", "transition 3", "transition 4", "max"}
 var defaultRadioButtonLabels = []string{"on", "off"}
 
 // controlInput is the normalized control form payload shared by API and page handlers.

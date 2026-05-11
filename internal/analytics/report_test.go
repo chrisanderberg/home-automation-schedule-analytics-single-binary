@@ -289,10 +289,10 @@ func TestSeededDemoReportCapturesBedroomAndOfficePatterns(t *testing.T) {
 	workBucket, _ := domain.BucketAtUTC(time.Date(2026, time.January, 5, 10, 0, 0, 0, time.UTC).UnixMilli())
 	weekendWorkBucket, _ := domain.BucketAtUTC(time.Date(2026, time.January, 10, 10, 0, 0, 0, time.UTC).UnixMilli())
 	if officeUTC.PreferenceSeries[3].Raw[workBucket] <= officeUTC.PreferenceSeries[2].Raw[workBucket] {
-		t.Fatalf("expected weekday office inferred preference to favor trans 3 at 10:00")
+		t.Fatalf("expected weekday office inferred preference to favor transition 3 at 10:00")
 	}
 	if officeUTC.PreferenceSeries[2].Raw[weekendWorkBucket] <= officeUTC.PreferenceSeries[3].Raw[weekendWorkBucket] {
-		t.Fatalf("expected weekend office inferred preference to favor trans 2 at 10:00")
+		t.Fatalf("expected weekend office inferred preference to favor transition 2 at 10:00")
 	}
 }
 

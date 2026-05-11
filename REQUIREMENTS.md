@@ -200,7 +200,7 @@ partially defined upfront and extended as development proceeds.
   Rationale: common radio-button-style controls usually start as an on/off
   toggle, and non-blank defaults make UI configuration faster and clearer.
 - Prefer sliders to be UI-configured as a fixed six-state control with
-  default labels `min`, `trans 1`, `trans 2`, `trans 3`, `trans 4`, and `max`.
+  default labels `min`, `transition 1`, `transition 2`, `transition 3`, `transition 4`, and `max`.
   Rationale: slider analytics already assume the fixed six-state shape, so the
   UI should reflect that contract directly instead of offering an invalid state
   count choice.
