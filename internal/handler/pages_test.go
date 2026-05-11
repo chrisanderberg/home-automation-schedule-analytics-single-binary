@@ -434,7 +434,7 @@ func TestControlPageRawModeEmbedsSameBucketsAsAPI(t *testing.T) {
 		t.Fatalf("seed demo data: %v", err)
 	}
 
-	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/analytics/raw?controlId=living-room-scene&modelId="+demodata.DefaultModelID+"&quarter="+fmt.Sprintf("%d", demodata.DefaultQuarterIndex)+"&clock=utc", nil)
 	apiW := httptest.NewRecorder()
 	HandleAnalyticsRaw(db).ServeHTTP(apiW, apiReq)
 	if apiW.Code != http.StatusOK {

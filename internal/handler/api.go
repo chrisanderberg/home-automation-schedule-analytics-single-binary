@@ -18,12 +18,12 @@ import (
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
 
-const snapshotExportTimeout = 30 * time.Second
+const snapshotCreateTimeout = 30 * time.Second
 
 // HandleHealth returns a minimal liveness endpoint.
 func HandleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeMutationOK(w)
 	}
 }
 
@@ -31,7 +31,7 @@ func HandleHealth() http.HandlerFunc {
 type controlRequest struct {
 	ControlID   string   `json:"controlId"`
 	ControlType string   `json:"controlType"`
-	NumStates   int      `json:"numStates"`
+	NumStates   *int     `json:"numStates"`
 	StateLabels []string `json:"stateLabels"`
 }
 
@@ -44,10 +44,11 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		control, errMsg := validateControlInput(controlInput{
-			ControlID:   req.ControlID,
-			ControlType: req.ControlType,
-			NumStates:   req.NumStates,
-			StateLabels: req.StateLabels,
+			ControlID:    req.ControlID,
+			ControlType:  req.ControlType,
+			NumStates:    valueOrZero(req.NumStates),
+			HasNumStates: req.NumStates != nil,
+			StateLabels:  req.StateLabels,
 		})
 		if errMsg != "" {
 			writeError(w, http.StatusBadRequest, errMsg)
@@ -83,7 +84,7 @@ func HandleControls(db *sql.DB) http.HandlerFunc {
 			writeError(w, status, message)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+		writeMutationOK(w)
 	}
 }
 
@@ -95,43 +96,6 @@ func HandleHolding(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
 // HandleTransitions accepts transition ingest requests.
 func HandleTransitions(db *sql.DB, cfg ingest.Config) http.HandlerFunc {
 	return makeIngestHandler(db, cfg, "handleTransitions", ingest.IngestTransition)
-}
-
-// HandleAnalytics returns structured analytics for one control/model/quarter, optionally filtered to one clock.
-func HandleAnalytics(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		input, control, ok := loadAnalyticsInput(w, r, db, "handleAnalytics")
-		if !ok {
-			return
-		}
-
-		report, err := analytics.BuildReport(r.Context(), db, control, input.modelID, input.quarterIndex)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "analytics not found")
-				return
-			}
-			log.Printf("handleAnalytics build report failed: %v", err)
-			writeError(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-		if input.clock == "" {
-			writeJSON(w, http.StatusOK, report)
-			return
-		}
-		selectedClock, err := report.ClockBySlug(input.clock)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid clock")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"controlId":    report.ControlID,
-			"modelId":      report.ModelID,
-			"quarterIndex": report.QuarterIndex,
-			"quarterLabel": report.QuarterLabel,
-			"clock":        selectedClock,
-		})
-	}
 }
 
 // HandleAnalyticsRaw returns the stored per-bucket holdings and transitions without derived processing.
@@ -375,22 +339,39 @@ func makeIngestHandler[T any](
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
 
-// HandleSnapshots exports a snapshot file and returns its filename.
+// HandleSnapshots creates a snapshot file and returns its filename.
 func HandleSnapshots(db *sql.DB, snapshotDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), snapshotExportTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), snapshotCreateTimeout)
 		defer cancel()
 
-		path, err := snapshot.Export(ctx, db, snapshotDir)
+		path, err := snapshot.CreateSnapshot(ctx, db, snapshotDir)
 		if err != nil {
-			log.Printf("handleSnapshots export failed: %v", err)
+			log.Printf("handleSnapshots create failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"snapshotFilename": filepath.Base(path)})
+		writeMutationOK(w, map[string]string{"snapshotFilename": filepath.Base(path)})
 	}
+}
+
+func valueOrZero(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func writeMutationOK(w http.ResponseWriter, extra ...map[string]string) {
+	payload := map[string]string{"status": "ok"}
+	for _, fields := range extra {
+		for key, value := range fields {
+			payload[key] = value
+		}
+	}
+	writeJSON(w, http.StatusOK, payload)
 }

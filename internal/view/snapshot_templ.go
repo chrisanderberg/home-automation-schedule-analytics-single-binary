@@ -25,7 +25,7 @@ func displaySnapshots(snapshots []SnapshotEntry) []SnapshotEntry {
 	return snapshots
 }
 
-// SnapshotPage renders the snapshot listing and export action.
+// SnapshotPage renders the snapshot listing and create action.
 func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -59,12 +59,12 @@ func SnapshotPage(snapshots []SnapshotEntry) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1>Snapshots</h1><p class=\"page-subtitle\">Export a point-in-time copy of the database.</p></div></div><div class=\"snapshot-actions\"><button class=\"btn\" hx-post=\"/api/v1/snapshots\" hx-indicator=\"#snapshot-export-status\" hx-on:click=\"this.disabled = true; this.dataset.originalText = this.textContent; this.textContent = 'Exporting...';\" hx-on::after-request=\"this.disabled = false; this.textContent = this.dataset.originalText || 'Export Snapshot'; if (event.detail.successful) { location.reload(); }\">Export Snapshot</button> <span id=\"snapshot-export-status\" class=\"htmx-indicator\">Exporting...</span></div><div id=\"snapshot-list\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1>Snapshots</h1><p class=\"page-subtitle\">Create a point-in-time snapshot of the database.</p></div></div><div class=\"snapshot-actions\"><button class=\"btn\" hx-post=\"/api/snapshots\" hx-indicator=\"#snapshot-export-status\" hx-on:click=\"this.disabled = true; this.dataset.originalText = this.textContent; this.textContent = 'Creating...';\" hx-on::after-request=\"this.disabled = false; this.textContent = this.dataset.originalText || 'Create Snapshot'; if (event.detail.successful) { location.reload(); }\">Create Snapshot</button> <span id=\"snapshot-export-status\" class=\"htmx-indicator\">Creating...</span></div><div id=\"snapshot-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(snapshots) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"empty\">No snapshots yet. Click Export Snapshot to create one.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"empty\">No snapshots yet. Click Create Snapshot to create one.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
