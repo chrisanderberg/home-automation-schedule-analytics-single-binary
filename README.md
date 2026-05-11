@@ -117,7 +117,7 @@ result exactly.
 |---|---|
 | `/` | Home — list of registered controls with aggregate counts |
 | `/controls/{controlID}` | Control detail with heatmap visualization |
-| `/snapshots` | Snapshot management (export + history) |
+| `/snapshots` | Snapshot management (create snapshot + history) |
 
 ## Development
 
@@ -224,7 +224,7 @@ internal/
   domain/     # blob index math, bucketing (5 clocks), quarter splitting
   storage/    # SQLite schema, CRUD, concurrent-safe aggregate updates
   ingest/     # holding interval + transition ingestion pipeline
-  snapshot/   # SQLite backup export
+  snapshot/   # SQLite snapshot creation
   handler/    # JSON API handlers + HTML page handlers
   server/     # HTTP router wiring
   view/       # TEMPL templates (layout, home, control, snapshot)

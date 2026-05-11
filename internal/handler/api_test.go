@@ -214,6 +214,29 @@ func TestControlsRejectsSliderWithNonSixStates(t *testing.T) {
 	}
 }
 
+// TestControlsFillsBlankSliderLabels verifies JSON callers cannot persist empty slider state labels.
+func TestControlsFillsBlankSliderLabels(t *testing.T) {
+	db := openTestDB(t)
+	body := map[string]any{
+		"controlId":   "slider",
+		"controlType": "sliders",
+		"stateLabels": []string{"", "low", "", "high", "", ""},
+	}
+	w := postJSON(HandleControls(db), body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	control, err := storage.GetControl(context.Background(), db, "slider")
+	if err != nil {
+		t.Fatalf("get control: %v", err)
+	}
+	want := []string{"min", "low", "state3", "high", "state5", "max"}
+	if strings.Join(control.StateLabels, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected slider labels: got %+v want %+v", control.StateLabels, want)
+	}
+}
+
 // TestControlsRejectStructuralChangeWithAggregates verifies the API cannot change blob shape once data exists.
 func TestControlsRejectStructuralChangeWithAggregates(t *testing.T) {
 	db := openTestDB(t)

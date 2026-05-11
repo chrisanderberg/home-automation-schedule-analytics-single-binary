@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,11 +23,11 @@ var defaultRadioButtonLabels = []string{"on", "off"}
 
 // controlInput is the normalized control form payload shared by API and page handlers.
 type controlInput struct {
-	ControlID   string
-	ControlType string
-	NumStates   int
+	ControlID    string
+	ControlType  string
+	NumStates    int
 	HasNumStates bool
-	StateLabels []string
+	StateLabels  []string
 }
 
 // clampStateCount limits free-form state counts to the supported range.
@@ -88,6 +89,9 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 	if controlType == string(storage.ControlTypeSliders) && numStates != 6 {
 		return storage.Control{}, "sliders must use exactly 6 states"
 	}
+	if controlType == string(storage.ControlTypeSliders) && labels != nil {
+		fillSliderLabelDefaults(labels)
+	}
 
 	return storage.Control{
 		ControlID:   controlID,
@@ -95,6 +99,22 @@ func validateControlInput(input controlInput) (storage.Control, string) {
 		NumStates:   numStates,
 		StateLabels: labels,
 	}, ""
+}
+
+func fillSliderLabelDefaults(labels []string) {
+	for i := range labels {
+		if labels[i] != "" {
+			continue
+		}
+		switch i {
+		case 0:
+			labels[i] = "min"
+		case len(labels) - 1:
+			labels[i] = "max"
+		default:
+			labels[i] = fmt.Sprintf("state%d", i+1)
+		}
+	}
 }
 
 // parseControlForm reads and validates the control form submission.

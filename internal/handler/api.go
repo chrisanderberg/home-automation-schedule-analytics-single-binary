@@ -10,15 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"home-automation-schedule-analytics-single-bin/internal/analytics"
 	"home-automation-schedule-analytics-single-bin/internal/ingest"
 	"home-automation-schedule-analytics-single-bin/internal/snapshot"
 	"home-automation-schedule-analytics-single-bin/internal/storage"
 )
-
-const snapshotCreateTimeout = 30 * time.Second
 
 // HandleHealth returns a minimal liveness endpoint.
 func HandleHealth() http.HandlerFunc {
@@ -346,10 +343,7 @@ func makeIngestHandler[T any](
 // HandleSnapshots creates a snapshot file and returns its filename.
 func HandleSnapshots(db *sql.DB, snapshotDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), snapshotCreateTimeout)
-		defer cancel()
-
-		path, err := snapshot.CreateSnapshot(ctx, db, snapshotDir)
+		path, err := snapshot.CreateSnapshot(r.Context(), db, snapshotDir)
 		if err != nil {
 			log.Printf("handleSnapshots create failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal server error")
